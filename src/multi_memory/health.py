@@ -53,10 +53,15 @@ class HealthTracker:
         self._counters.pop(backend_key, None)
 
     def record_failure(self, backend_key: str) -> None:
-        """Increment the failure counter."""
-        self._counters[backend_key] = self._counters.get(backend_key, 0) + 1
+        """Increment the failure counter.
+
+        A warning is logged exactly once — the first time the counter
+        reaches (or crosses) *failure_limit*.
+        """
+        prev = self._counters.get(backend_key, 0)
+        self._counters[backend_key] = prev + 1
         current = self._counters[backend_key]
-        if current >= self._failure_limit:
+        if prev < self._failure_limit <= current:
             logger.warning(
                 "[multi-memory] HealthTracker: circuit OPEN for %s "
                 "(%d consecutive failures)",

@@ -1,0 +1,109 @@
+#!/usr/bin/env bash
+# ──────────────────────────────────────────────────────────────
+# install.sh — one-command install for multi-memory plugin
+# Usage:  ./scripts/install.sh          # default install
+#         ./scripts/install.sh --test   # install + run tests
+#         ./scripts/install.sh --help   # this message
+#
+# Symlinks the plugin into Hermes's plugin directory, validates
+# the config, and optionally runs the test suite.
+# Idempotent — safe to run multiple times.
+# ──────────────────────────────────────────────────────────────
+set -euo pipefail
+
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+HERMES_HOME="${HERMES_HOME:-$HOME/.hermes}"
+PLUGIN_NAME="multi"
+PLUGIN_SRC="$REPO_DIR/src/multi_memory"
+PLUGIN_DST="$HERMES_HOME/hermes-agent/plugins/memory/$PLUGIN_NAME"
+CONFIG_DST="$HERMES_HOME/config.yaml"
+
+# ── helpers ──────────────────────────────────────────────────
+info()  { printf "\033[36m➜\033[0m %s\n" "$*"; }
+ok()    { printf "\033[32m✓\033[0m %s\n" "$*"; }
+warn()  { printf "\033[33m⚠\033[0m %s\n" "$*" >&2; }
+die()   { printf "\033[31m✘\033[0m %s\n" "$*" >&2; exit 1; }
+
+# ── flags ────────────────────────────────────────────────────
+RUN_TESTS=false
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --test)  RUN_TESTS=true;  shift ;;
+        --help)  sed -n '2,10p' "$0"; exit 0 ;;
+        *)       die "Unknown flag: $1. Try --help." ;;
+    esac
+done
+
+# ── main ─────────────────────────────────────────────────────
+echo ""
+info "multi-memory plugin installer v0.2.0"
+echo ""
+
+# 1. Verify source exists
+if [[ ! -d "$PLUGIN_SRC" ]]; then
+    die "Source not found: $PLUGIN_SRC"
+fi
+ok "Source directory found"
+
+# 2. Create plugin destination directory
+mkdir -p "$(dirname "$PLUGIN_DST")"
+
+# 3. Create/verify symlink (idempotent)
+if [[ -L "$PLUGIN_DST" ]]; then
+    EXISTING="$(readlink "$PLUGIN_DST")"
+    if [[ "$EXISTING" == "$PLUGIN_SRC" ]]; then
+        ok "Symlink already points to source (idempotent)"
+    else
+        warn "Symlink points elsewhere ($EXISTING) — updating"
+        ln -sfn "$PLUGIN_SRC" "$PLUGIN_DST"
+        ok "Symlink updated"
+    fi
+elif [[ -d "$PLUGIN_DST" ]]; then
+    warn "Directory exists at $PLUGIN_DST — not a symlink; leaving it"
+else
+    ln -s "$PLUGIN_SRC" "$PLUGIN_DST"
+    ok "Symlink created: $PLUGIN_DST → $PLUGIN_SRC"
+fi
+
+# 4. Validate Python import
+if python3 -c "import sys; sys.path.insert(0, '$REPO_DIR/src'); from multi_memory import MultiMemoryProvider; print(f'OK: {MultiMemoryProvider.name}')" 2>/dev/null; then
+    ok "Plugin imports successfully"
+else
+    die "Plugin import failed — is the repo installed as a package?"
+fi
+
+# 5. Check plugin.yaml
+if [[ -f "$REPO_DIR/plugin.yaml" ]]; then
+    ok "plugin.yaml found"
+else
+    warn "plugin.yaml missing — Hermes plugin loader may not discover this plugin"
+fi
+
+# 6. Check config.yaml
+if [[ -f "$CONFIG_DST" ]]; then
+    ok "Config file found at $CONFIG_DST"
+else
+    warn "No config.yaml at $CONFIG_DST — plugin loads at runtime but will use defaults"
+fi
+
+# 7. Run tests (optional)
+if $RUN_TESTS; then
+    echo ""
+    info "Running tests…"
+    cd "$REPO_DIR"
+    if python -m pytest tests/ -v; then
+        ok "All tests passed"
+    else
+        die "Some tests failed — see output above"
+    fi
+fi
+
+echo ""
+ok "Install complete"
+echo ""
+info "Next steps:"
+echo "   1. Add 'memory.provider: multi' to your config.yaml"
+echo "   2. Configure backends under 'memory.multi.backends'"
+echo "   3. See CONFIG.md for full backend reference"
+echo ""

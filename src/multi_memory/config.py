@@ -31,9 +31,11 @@ _CONFIG_PATH = os.path.join(_HERMES_HOME, "config.yaml")
 
 
 def load_multi_config() -> dict[str, Any]:
-    with open(_CONFIG_PATH) as f:
-        doc = yaml.safe_load(f) or {}
-    return doc
+    try:
+        with open(_CONFIG_PATH) as f:
+            return yaml.safe_load(f) or {}
+    except FileNotFoundError:
+        return {}
 
 
 def get_enabled_backends(config: dict | None = None) -> list[str]:

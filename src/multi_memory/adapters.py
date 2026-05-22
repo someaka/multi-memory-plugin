@@ -1,3 +1,15 @@
+"""Adapter layer that wraps Hermes MemoryProvider subclasses into a common interface.
+
+Each known backend (Mnemosyne, Mem0, Holographic, Honcho) has a thin
+``_SubProviderAdapter`` subclass that delegates lifecycle calls to
+the real provider while prefixing tool names to avoid collisions.
+
+Usage
+-----
+Adapters are not instantiated directly — the ``MultiMemoryProvider``
+in ``__init__.py`` discovers and instantiates them from config.
+"""
+
 from __future__ import annotations
 
 from importlib.util import find_spec

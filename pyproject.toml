@@ -16,5 +16,9 @@ honcho      = ["honcho-ai"]
 mnemosyne   = []             # stdlib-only
 all         = ["multi-memory[mem0,holographic,honcho,mnemosyne]"]
 
+# [project.scripts] intentionally omitted — this is an Hermes plugin,
+# not a CLI tool.  Consumers load it via the ``register(ctx)`` entry
+# point in ``src/multi_memory/__init__.py``.
+
 [tool.setuptools.packages.find]
 where = ["src"]

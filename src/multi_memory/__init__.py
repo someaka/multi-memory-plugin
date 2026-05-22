@@ -36,6 +36,9 @@ from .adapters import (
     _HolographicAdapter,
     _HonchoAdapter,
 )
+from .budget import ToolBudgetWarning
+from .validate import NamespaceValidator
+from .health import HealthTracker
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +64,10 @@ class MultiMemoryProvider(MemoryProvider):
 
     def __init__(self) -> None:
         self._subs: list[_SubProviderAdapter] = []
+        self._tool_budget = ToolBudgetWarning()
+        self._health = HealthTracker()
         self._load_config()
+        self._validate_namespaces()
 
     def _load_config(self) -> None:
         """Read config.yaml and populate sub-adapters."""
@@ -78,6 +84,11 @@ class MultiMemoryProvider(MemoryProvider):
         except Exception as exc:
             logger.warning("[multi-memory] config load failed: %s", exc)
 
+    def _validate_namespaces(self) -> None:
+        """Check all adapter PREFIX values are non-empty."""
+        validator = NamespaceValidator(list(_SUB_CLASSES))
+        validator.validate_all()
+
     # ─── 3 required abstract methods ────────────────────────────────────────
 
     @property
@@ -91,7 +102,9 @@ class MultiMemoryProvider(MemoryProvider):
         for sub in self._subs:
             try:
                 sub.initialize(session_id=session_id, **kwargs)
+                self._health.record_success(sub.name)
             except Exception as exc:
+                self._health.record_failure(sub.name)
                 logger.warning(
                     "[multi-memory] %s initialize() failed (%s)", sub.name, exc
                 )
@@ -105,6 +118,7 @@ class MultiMemoryProvider(MemoryProvider):
                 if name and name not in seen:
                     schemas.append(raw)
                     seen.add(name)
+        self._tool_budget.check(schemas)
         return schemas
 
     def handle_tool_call(self, tool_name: str, args: dict, **kwargs: Any) -> str:
@@ -127,7 +141,9 @@ class MultiMemoryProvider(MemoryProvider):
         for sub in reversed(self._subs):
             try:
                 sub.shutdown()
+                self._health.record_success(f"{sub.name}.shutdown")
             except Exception as exc:
+                self._health.record_failure(f"{sub.name}.shutdown")
                 logger.debug("[multi-memory] shutdown %s: %s", sub.name, exc)
 
     def system_prompt_block(self) -> str:

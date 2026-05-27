@@ -37,6 +37,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tool name prefixing (`mnemosyne_`, `mem0_`, etc.) to avoid schema collisions.
 - Dual config format support (`multi.backends` dict and `providers` list).
 - Per-backend error isolation (try/except on every lifecycle call).
+
+## [0.3.0] — 2026-05-28
+
+### Fixed
+- `_MnemosyneAdapter`: uses Hermes plugin loader (`plugins.memory.load_memory_provider`)
+  instead of `_try_import("mnemosyne")` which hit the pip MCP server package.
+  Mnemosyne is a user-installed plugin at `~/.hermes/plugins/mnemosyne/`.
+- `_MnemosyneAdapter`: `handle_tool_call` passes full prefixed tool names
+  (`"mnemosyne_recall"`) since Mnemosyne dispatches on full names internally.
+- `_MnemosyneAdapter`: `get_tool_schemas` returns schemas directly from delegate
+  (Mnemosyne already prefixes its own tools — no double-prefix).
+- `_Mem0Adapter`: `get_tool_schemas` strips existing `"mem0_"` prefix before
+  re-adding it, preventing `mem0_mem0_profile` double-prefix.
+- `_Mem0Adapter`: `handle_tool_call` passes full prefixed names (`"mem0_search"`)
+  since Mem0 dispatches on full names internally.
+- `_HonchoAdapter`: same double-prefix fix as Mem0 — strips then re-adds prefix.
+- `_HonchoAdapter`: `handle_tool_call` passes full prefixed names.
+
+### Tests
+- **178 tests** (up from 173), all passing.
+- Added `TestNoDoublePrefix` (5 tests): verifies Mem0, Honcho, Holographic,
+  and Mnemosyne adapters produce correctly prefixed tool names without duplication.
+
 ## [0.2.1] — 2026-05-28
 
 ### Fixed

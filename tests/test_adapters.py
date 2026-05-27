@@ -866,6 +866,87 @@ class TestNamePropertyConsistency:
         assert p.name == "multi"
 
 
+# ── No-double-prefix tests ─────────────────────────────────────────────
+
+
+class TestNoDoublePrefix:
+    """Adapters wrapping providers with self-prefixed tool names
+    (Mem0, Honcho, Mnemosyne) must NOT double-prefix schemas."""
+
+    def _make_mem0_adapter(self):
+        mock_delegate = mock.MagicMock()
+        mock_delegate.name = "mem0"
+        mock_delegate.get_tool_schemas.return_value = [
+            {"name": "mem0_profile", "description": "Profile"},
+            {"name": "mem0_search", "description": "Search"},
+            {"name": "mem0_conclude", "description": "Conclude"},
+        ]
+        mock_delegate.handle_tool_call.return_value = '{"ok": true}'
+        mock_cls = mock.MagicMock(return_value=mock_delegate)
+        with mock.patch("multi_memory.adapters._try_import", return_value=mock_cls):
+            adapter = _Mem0Adapter()
+        return adapter, mock_delegate
+
+    def _make_honcho_adapter(self):
+        mock_delegate = mock.MagicMock()
+        mock_delegate.name = "honcho"
+        mock_delegate.get_tool_schemas.return_value = [
+            {"name": "honcho_profile", "description": "Profile"},
+            {"name": "honcho_search", "description": "Search"},
+        ]
+        mock_delegate.handle_tool_call.return_value = '{"ok": true}'
+        mock_cls = mock.MagicMock(return_value=mock_delegate)
+        with mock.patch("multi_memory.adapters._try_import", return_value=mock_cls):
+            adapter = _HonchoAdapter()
+        return adapter, mock_delegate
+
+    def test_mem0_no_double_prefix(self):
+        adapter, _ = self._make_mem0_adapter()
+        schemas = adapter.get_tool_schemas()
+        names = [s["name"] for s in schemas]
+        assert names == ["mem0_profile", "mem0_search", "mem0_conclude"]
+        assert not any(n.startswith("mem0_mem0_") for n in names)
+
+    def test_mem0_handle_passes_full_name(self):
+        adapter, delegate = self._make_mem0_adapter()
+        adapter.handle_tool_call("mem0_search", {"query": "test"})
+        delegate.handle_tool_call.assert_called_once_with(
+            "mem0_search", {"query": "test"}
+        )
+
+    def test_honcho_no_double_prefix(self):
+        adapter, _ = self._make_honcho_adapter()
+        schemas = adapter.get_tool_schemas()
+        names = [s["name"] for s in schemas]
+        assert names == ["honcho_profile", "honcho_search"]
+        assert not any(n.startswith("honcho_honcho_") for n in names)
+
+    def test_honcho_handle_passes_full_name(self):
+        adapter, delegate = self._make_honcho_adapter()
+        adapter.handle_tool_call("honcho_search", {"query": "test"})
+        delegate.handle_tool_call.assert_called_once_with(
+            "honcho_search", {"query": "test"}
+        )
+
+    def test_holographic_strips_prefix_normally(self):
+        """Holographic has unprefixed raw names — base class prefix+strip works."""
+        mock_delegate = mock.MagicMock()
+        mock_delegate.name = "holographic"
+        mock_delegate.get_tool_schemas.return_value = [
+            {"name": "fact_store", "description": "Store"},
+        ]
+        mock_delegate.handle_tool_call.return_value = '{"ok": true}'
+        mock_cls = mock.MagicMock(return_value=mock_delegate)
+        with mock.patch("multi_memory.adapters._try_import", return_value=mock_cls):
+            adapter = _HolographicAdapter()
+        schemas = adapter.get_tool_schemas()
+        assert schemas[0]["name"] == "holographic_fact_store"
+        adapter.handle_tool_call("holographic_fact_store", {"action": "list"})
+        mock_delegate.handle_tool_call.assert_called_once_with(
+            "fact_store", {"action": "list"}
+        )
+
+
 @requires_holographic
 class TestHolographicAdapterLifecycle:
     """Direct tests on the holographic adapter's delegate methods."""

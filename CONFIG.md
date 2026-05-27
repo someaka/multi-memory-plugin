@@ -55,12 +55,15 @@ both are present.
 |----------|-------|
 | Python dep | stdlib-only |
 | Env vars | None |
-| Module | `mnemosyne.MemoryProvider` |
+| Module | Plugin loader (`~/.hermes/plugins/mnemosyne/`) |
 | Tool prefix | `mnemosyne_` |
 | Config key | `mnemosyne` |
 
-The Mnemosyne backend uses Hermes's built-in SQLite memory store. No external dependencies,
-no API keys. Always available.
+The Mnemosyne backend is a user-installed plugin deployed to
+`~/.hermes/plugins/mnemosyne/` (see [AxDSan/mnemosyne](https://github.com/AxDSan/mnemosyne)).
+Uses the Hermes plugin loader — no pip install needed. Tools are self-prefixed
+(`mnemosyne_recall`, `mnemosyne_remember`, etc.) so the adapter passes them through
+without stripping.
 
 **Config example:**
 ```yaml
@@ -79,11 +82,13 @@ memory:
 |----------|-------|
 | Python dep | `mem0ai>=0.1` |
 | Env vars | `MEM0_API_KEY` |
-| Module | `plugins.memory.mem0.Mem0MemoryProvider` |
+| Module | `plugins.memory.mem0` (bundled) |
 | Tool prefix | `mem0_` |
 | Config key | `mem0` |
 
 Mem0 provides cloud-hosted memory with semantic search. Requires a Mem0 API key.
+Tools are self-prefixed by the provider (`mem0_search`) — the adapter strips
+and re-adds the prefix to avoid double-prefixing.
 
 **Config example:**
 ```yaml
@@ -94,7 +99,10 @@ memory:
       mem0: {}
 ```
 
-Requires `MEM0_API_KEY` in the environment (or `~/.hermes/.env` / `~/.hermes/config.yaml` env).
+Requires `MEM0_API_KEY` in the environment, `~/.hermes/.env`, or `~/.hermes/mem0.json`:
+```json
+{"api_key": "your-mem0-api-key"}
+```
 
 ---
 

@@ -111,11 +111,36 @@ class _MnemosyneAdapter(_SubProviderAdapter):
     CLASS      = "MemoryProvider"
     PREFIX     = "mnemosyne"   # stdlib-backed, no extra pip deps
 
+    def __init__(self, **kwargs: Any):
+        # Mnemosyne is a user-installed plugin (~/.hermes/plugins/mnemosyne/),
+        # not a pip package — use the Hermes plugin loader to find it.
+        try:
+            from plugins.memory import load_memory_provider
+            provider = load_memory_provider("mnemosyne")
+            if provider is None:
+                raise RuntimeError(
+                    "[multi-memory] backend 'mnemosyne' not found via plugin loader"
+                )
+            self._delegate = provider
+        except ImportError:
+            # Fallback to standard import when running outside Hermes
+            super().__init__(**kwargs)
+
     @property
     def name(self) -> str:
         # Override needed because mnemosyne's real provider may report a
         # different name than the canonical "mnemosyne" used by config.
         return "mnemosyne"
+
+    def handle_tool_call(self, tool_name: str, args: dict, **kwargs: Any) -> str:
+        # Mnemosyne uses FULL prefixed tool names internally
+        # (e.g. "mnemosyne_recall", not "recall") — don't strip.
+        return self._delegate.handle_tool_call(tool_name, args, **kwargs)
+
+    def get_tool_schemas(self) -> list[dict]:
+        # Mnemosyne's tools are ALREADY prefixed ("mnemosyne_recall"),
+        # don't double-prefix like the base class does.
+        return self._delegate.get_tool_schemas()
 
 
 class _Mem0Adapter(_SubProviderAdapter):
@@ -123,6 +148,21 @@ class _Mem0Adapter(_SubProviderAdapter):
     MODULE     = "plugins.memory.mem0"
     CLASS      = "Mem0MemoryProvider"
     PREFIX     = "mem0"
+
+    def get_tool_schemas(self) -> list[dict]:
+        # Mem0's tools are already prefixed ("mem0_profile") — strip the
+        # existing prefix so we end up with exactly one "mem0_" prefix.
+        raw = self._delegate.get_tool_schemas()
+        pfx = f"{self.PREFIX}_"
+        stripped = [
+            {**s, "name": s["name"][len(pfx):] if s["name"].startswith(pfx) else s["name"]}
+            for s in raw
+        ]
+        return [{**s, "name": f"{self.PREFIX}_{s['name']}"} for s in stripped]
+
+    def handle_tool_call(self, tool_name: str, args: dict, **kwargs: Any) -> str:
+        # Mem0 expects full prefixed names ("mem0_search") — don't strip.
+        return self._delegate.handle_tool_call(tool_name, args, **kwargs)
 
 
 class _HolographicAdapter(_SubProviderAdapter):
@@ -137,3 +177,18 @@ class _HonchoAdapter(_SubProviderAdapter):
     MODULE     = "plugins.memory.honcho"
     CLASS      = "HonchoMemoryProvider"
     PREFIX     = "honcho"
+
+    def get_tool_schemas(self) -> list[dict]:
+        # Honcho's tools are already prefixed ("honcho_profile") — strip the
+        # existing prefix so the base class adds exactly one "honcho_" prefix.
+        raw = self._delegate.get_tool_schemas()
+        pfx = f"{self.PREFIX}_"
+        stripped = [
+            {**s, "name": s["name"][len(pfx):] if s["name"].startswith(pfx) else s["name"]}
+            for s in raw
+        ]
+        return [{**s, "name": f"{self.PREFIX}_{s['name']}"} for s in stripped]
+
+    def handle_tool_call(self, tool_name: str, args: dict, **kwargs: Any) -> str:
+        # Honcho expects full prefixed names ("honcho_search") — don't strip.
+        return self._delegate.handle_tool_call(tool_name, args, **kwargs)

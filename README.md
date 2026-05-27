@@ -44,12 +44,19 @@ memory:
 
 | Backend | pip install | Env vars required |
 |---------|------------|-------------------|
-| Mnemosyne | stdlib-only | None |
+| Mnemosyne | [plugin](https://github.com/AxDSan/mnemosyne) | None |
 | Mem0 | `mem0ai>=0.1` | `MEM0_API_KEY` |
 | Holographic | stdlib-only | None |
 | Honcho | `honcho-ai` | `HONCHO_API_KEY`, `HONCHO_APP_ID` |
 
-**Note:** If a backend is not installed, the adapter raises at init time and the loader in `_load_backends_from_config` catches the error and skips it — no crash, just a debug log.
+**Notes:**
+- Mnemosyne is a user-installed plugin (deployed to `~/.hermes/plugins/mnemosyne/`).
+  The adapter uses the Hermes plugin loader to find it.
+- Mem0 and Honcho tools are self-prefixed by their providers — the adapter
+  strips and re-adds the prefix to avoid double-prefixing (`mem0_mem0_search`).
+- If a backend is not installed, the adapter raises at init time and the loader
+  in `_load_backends_from_config` catches the error and skips it — no crash,
+  just a debug log.
 
 ## How it works
 

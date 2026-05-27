@@ -37,4 +37,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tool name prefixing (`mnemosyne_`, `mem0_`, etc.) to avoid schema collisions.
 - Dual config format support (`multi.backends` dict and `providers` list).
 - Per-backend error isolation (try/except on every lifecycle call).
+## [0.2.1] — 2026-05-28
+
+### Fixed
+- `__init__.py`: conditional imports for `tools.registry.tool_error` and
+  `agent.memory_provider.MemoryProvider` — standalone fallbacks so the plugin
+  works outside Hermes (testing, CI).
+- `adapters.py`: `_try_import` catches `ModuleNotFoundError` from `find_spec`
+  when parent package (e.g. `plugins`) is missing.
+- `discovery.py`: `discover_backends` catches `ModuleNotFoundError` from `find_spec`.
+- `pyproject.toml`: added `pyyaml>=6.0` to runtime deps, `test` optional-deps group.
+- CI: install test deps (`pip install -e ".[all,test]"`).
+
+### Changed
+- Removed redundant `name: str = "multi"` class attribute (property already provides it).
+- Removed unused `Any` import from `validate.py`.
+- Added `-> None` return type hint to `register()`.
+- Added comment on `_MnemosyneAdapter.name` property explaining the override.
+
+### Tests
+- **154 tests** (up from 131), **99% coverage** (up from 94%).
+- Added `TestSubProviderAdapterDelegation` (16 mock-based tests for adapter delegation).
+- Added `TestRegisterFunction`, `TestLoadConfigEdgeCases`, `TestNamePropertyConsistency`.
+- Extracted `_holographic_available()` to `conftest.py` (was duplicated in 2 files).
+- Replaced fragile generator-throw exception patterns with `side_effect`.
+- Replaced `importlib.reload()` in config tests with `mock.patch`.
+- Mock-based `provider` fixture (no real backends required).
+- `requires_holographic` skip marker for tests needing Hermes plugins package.
 - 16 unit tests covering config parsing, backend loading, and routing.

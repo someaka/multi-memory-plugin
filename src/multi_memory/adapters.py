@@ -110,6 +110,8 @@ class _MnemosyneAdapter(_SubProviderAdapter):
 
     @property
     def name(self) -> str:
+        # Override needed because mnemosyne's real provider may report a
+        # different name than the canonical "mnemosyne" used by config.
         return "mnemosyne"
 
 

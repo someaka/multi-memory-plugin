@@ -76,7 +76,7 @@ logger = logging.getLogger(__name__)
 _SUB_CLASSES = _MnemosyneAdapter, _Mem0Adapter, _HolographicAdapter, _HonchoAdapter
 
 
-def register(ctx):
+def register(ctx) -> None:
     """Entry point — called by Hermes plugin loader via _ProviderCollector."""
     ctx.register_memory_provider(MultiMemoryProvider())
 
@@ -90,8 +90,6 @@ class MultiMemoryProvider(MemoryProvider):
     sufficient for this to sit alongside any other ``MemoryProvider`` subclass
     in Hermes's builtin registry.
     """
-
-    name: str = "multi"
 
     def __init__(self) -> None:
         self._subs: list[_SubProviderAdapter] = []

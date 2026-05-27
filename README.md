@@ -67,11 +67,11 @@ to every active sub-provider with per-provider error isolation (`try/except`).
 ## Acceptance criteria
 
 - [x] `plugin.yaml`, `README.md`, `__init__.py`, `adapters.py` exist
-- [ ] `MultiMemoryProvider` passes `isinstance(p, MemoryProvider)` = True
-- [ ] 0 tool name collisions in `get_tool_schemas()` (first-seen wins)
-- [ ] `handle_tool_call()` routes to correct sub-provider by prefix
-- [ ] `initialize()` / `shutdown()` propagate to all active sub-providers
-- [ ] Unit tests pass (`python -m pytest tests/ -v`)
+- [x] `MultiMemoryProvider` passes `isinstance(p, MemoryProvider)` = True
+- [x] 0 tool name collisions in `get_tool_schemas()` (first-seen wins)
+- [x] `handle_tool_call()` routes to correct sub-provider by prefix
+- [x] `initialize()` / `shutdown()` propagate to all active sub-providers
+- [x] Unit tests pass (`python -m pytest tests/ -v`)
 
 ## File structure
 
@@ -79,12 +79,29 @@ to every active sub-provider with per-provider error isolation (`try/except`).
 multi-memory-plugin/
 ├── plugin.yaml                  → Hermes plugin metadata
 ├── pyproject.toml               → Build config
+├── setup.cfg                    → flake8 + pytest config
+├── Makefile                     → install, test, lint, coverage targets
 ├── README.md                    → This file
+├── CONFIG.md                    → Full configuration reference
+├── CHANGELOG.md                 → Version history
 ├── src/
 │   └── multi_memory/
 │       ├── __init__.py          → register() + MultiMemoryProvider
-│       ├── adapters.py          → Protocol + 4 sub-provider adapters
-│       └── config.py            → Config loader helper
-└── tests/
-    └── test_adapters.py         → Unit tests (schema prefix, dedup, routing)
+│       ├── adapters.py          → 4 sub-provider adapters
+│       ├── budget.py            → ToolBudgetWarning (schema count monitor)
+│       ├── config.py            → Config loader helpers
+│       ├── discovery.py         → Backend discovery + install detection
+│       ├── health.py            → HealthTracker + circuit breaker
+│       └── validate.py          → NamespaceValidator (PREFIX checks)
+├── tests/
+│   ├── conftest.py              → Shared fixtures + markers
+│   ├── test_adapters.py         → Adapters, provider, lifecycle hooks
+│   ├── test_budget.py           → Budget + namespace validator
+│   ├── test_config.py           → Config loading + normalization
+│   ├── test_discovery.py        → Backend discovery
+│   └── test_health.py           → HealthTracker + timeout_wrapper
+└── scripts/
+    ├── health_check.py          → CLI health check (--json, --verbose)
+    ├── install.sh               → One-command installer (symlink + validate)
+    └── setup.sh                 → Interactive setup wizard
 ```

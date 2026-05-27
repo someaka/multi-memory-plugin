@@ -2,27 +2,13 @@
 from __future__ import annotations
 
 import os
-from importlib.util import find_spec
 from unittest import mock
 
 import pytest
 
 from multi_memory import _normalise_multi_config, _load_backends_from_config
 from multi_memory.config import load_multi_config, get_enabled_backends
-
-
-def _holographic_available() -> bool:
-    """Check if the holographic backend is importable."""
-    try:
-        return find_spec("plugins.memory.holographic") is not None
-    except (ModuleNotFoundError, ValueError):
-        return False
-
-
-requires_holographic = pytest.mark.skipif(
-    not _holographic_available(),
-    reason="holographic backend not available (requires Hermes plugins package)",
-)
+from conftest import requires_holographic
 
 
 class TestNormaliseMultiConfig:
@@ -118,40 +104,25 @@ class TestLoadMultiConfig:
 
     def test_loads_yaml_from_default_path(self, tmp_path):
         """load_multi_config reads from HERMES_HOME/config.yaml."""
-        config_dir = tmp_path / ".hermes"
-        config_dir.mkdir()
-        config_file = config_dir / "config.yaml"
+        config_file = tmp_path / "config.yaml"
         config_file.write_text("memory:\n  provider: multi\n")
-        with mock.patch.dict(os.environ, {"HERMES_HOME": str(config_dir)}):
-            # Reimport to pick up the new _HERMES_HOME value
-            import importlib
-            from multi_memory import config as cfg_mod
-            importlib.reload(cfg_mod)
-            result = cfg_mod.load_multi_config()
+        with mock.patch("multi_memory.config._CONFIG_PATH", str(config_file)):
+            result = load_multi_config()
         assert result == {"memory": {"provider": "multi"}}
 
     def test_load_empty_file(self, tmp_path):
         """Empty config file returns empty dict."""
-        config_dir = tmp_path / ".hermes"
-        config_dir.mkdir()
-        config_file = config_dir / "config.yaml"
+        config_file = tmp_path / "config.yaml"
         config_file.write_text("")
-        with mock.patch.dict(os.environ, {"HERMES_HOME": str(config_dir)}):
-            import importlib
-            from multi_memory import config as cfg_mod
-            importlib.reload(cfg_mod)
-            result = cfg_mod.load_multi_config()
+        with mock.patch("multi_memory.config._CONFIG_PATH", str(config_file)):
+            result = load_multi_config()
         assert result == {}
 
     def test_load_missing_file_defaults_to_empty(self, tmp_path):
         """Missing config.yaml returns empty dict."""
-        config_dir = tmp_path / ".hermes"
-        config_dir.mkdir()
-        with mock.patch.dict(os.environ, {"HERMES_HOME": str(config_dir)}):
-            import importlib
-            from multi_memory import config as cfg_mod
-            importlib.reload(cfg_mod)
-            result = cfg_mod.load_multi_config()
+        config_file = tmp_path / "config.yaml"  # does not exist
+        with mock.patch("multi_memory.config._CONFIG_PATH", str(config_file)):
+            result = load_multi_config()
         assert result == {}
 
 

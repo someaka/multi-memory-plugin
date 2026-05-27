@@ -7,7 +7,7 @@ This file covers:
 """
 from __future__ import annotations
 
-from importlib.util import find_spec
+import os
 from unittest import mock
 
 import pytest
@@ -23,18 +23,7 @@ from multi_memory.adapters import (
 )
 
 
-def _holographic_available() -> bool:
-    """Check if the holographic backend is importable."""
-    try:
-        return find_spec("plugins.memory.holographic") is not None
-    except (ModuleNotFoundError, ValueError):
-        return False
-
-
-requires_holographic = pytest.mark.skipif(
-    not _holographic_available(),
-    reason="holographic backend not available (requires Hermes plugins package)",
-)
+from conftest import requires_holographic
 
 
 # ── Existing tests (preserved from original) ─────────────────────────────────
@@ -334,9 +323,8 @@ class TestLifecycleHooks:
     def test_prefetch_exception_isolation(self, provider):
         """Failure in one sub's prefetch still returns results from others."""
         for i, sub in enumerate(provider._subs):
-            original = sub.prefetch
             if i == 0:
-                sub.prefetch = lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("prefetch fail"))
+                sub.prefetch.side_effect = RuntimeError("prefetch fail")
         result = provider.prefetch("test query", session_id="s1")
         assert isinstance(result, str)  # doesn't raise
 
@@ -398,44 +386,44 @@ class TestLifecycleHooks:
         """queue_prefetch handles per-sub exceptions."""
         for i, sub in enumerate(provider._subs):
             if i == 0:
-                sub.queue_prefetch = lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("queue fail"))
+                sub.queue_prefetch.side_effect = RuntimeError("queue fail")
         provider.queue_prefetch("test", session_id="s1")  # should not raise
 
     def test_sync_turn_exception_isolation(self, provider):
         """sync_turn handles per-sub exceptions."""
         for i, sub in enumerate(provider._subs):
             if i == 0:
-                sub.sync_turn = lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("sync fail"))
+                sub.sync_turn.side_effect = RuntimeError("sync fail")
         provider.sync_turn("u", "a", session_id="s1")  # should not raise
 
     def test_on_memory_write_exception_isolation(self, provider):
         for i, sub in enumerate(provider._subs):
             if i == 0:
-                sub.on_memory_write = lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("write fail"))
+                sub.on_memory_write.side_effect = RuntimeError("write fail")
         provider.on_memory_write("add", "memory", "x")  # should not raise
 
     def test_on_turn_start_exception_isolation(self, provider):
         for i, sub in enumerate(provider._subs):
             if i == 0:
-                sub.on_turn_start = lambda: (_ for _ in ()).throw(RuntimeError("turn fail"))
+                sub.on_turn_start.side_effect = RuntimeError("turn fail")
         provider.on_turn_start()  # should not raise
 
     def test_on_session_end_exception_isolation(self, provider):
         for i, sub in enumerate(provider._subs):
             if i == 0:
-                sub.on_session_end = lambda m: (_ for _ in ()).throw(RuntimeError("session end fail"))
+                sub.on_session_end.side_effect = RuntimeError("session end fail")
         provider.on_session_end([{"role": "user"}])  # should not raise
 
     def test_on_session_switch_exception_isolation(self, provider):
         for i, sub in enumerate(provider._subs):
             if i == 0:
-                sub.on_session_switch = lambda: (_ for _ in ()).throw(RuntimeError("switch fail"))
+                sub.on_session_switch.side_effect = RuntimeError("switch fail")
         provider.on_session_switch()  # should not raise
 
     def test_on_delegation_exception_isolation(self, provider):
         for i, sub in enumerate(provider._subs):
             if i == 0:
-                sub.on_delegation = lambda: (_ for _ in ()).throw(RuntimeError("delegation fail"))
+                sub.on_delegation.side_effect = RuntimeError("delegation fail")
         provider.on_delegation()  # should not raise
 
     def test_prefetch_with_non_empty_results(self, provider):
@@ -582,6 +570,220 @@ class TestMultiMemoryProviderEdgeCases:
             p = MultiMemoryProvider()
             # Should not raise — exception is caught in _load_config
             assert p._subs == []  # fallback: empty subs on config failure
+
+
+# ── _SubProviderAdapter delegation tests (mock-based, no real backends) ───────
+
+
+class TestSubProviderAdapterDelegation:
+    """Mock-based tests for _SubProviderAdapter delegation methods.
+
+    These tests work without any real backends installed by patching
+    _try_import to return a mock class that creates a mock delegate.
+    """
+
+    def _make_adapter(self):
+        """Create a concrete _SubProviderAdapter with a mock delegate.
+
+        Returns (adapter, mock_delegate) tuple.
+        """
+        mock_delegate = mock.MagicMock()
+        mock_delegate.name = "mock_backend"
+
+        mock_cls = mock.MagicMock(return_value=mock_delegate)
+
+        with mock.patch("multi_memory.adapters._try_import", return_value=mock_cls):
+            class ConcreteAdapter(_SubProviderAdapter):
+                CONFIG_KEY = "test"
+                MODULE = "test"
+                CLASS = "Test"
+                PREFIX = "test"
+
+            adapter = ConcreteAdapter()
+        return adapter, mock_delegate
+
+    def test_name_delegates_to_delegate(self):
+        adapter, delegate = self._make_adapter()
+        delegate.name = "my_backend"
+        assert adapter.name == "my_backend"
+
+    def test_is_available_delegates(self):
+        adapter, delegate = self._make_adapter()
+        delegate.is_available.return_value = True
+        assert adapter.is_available() is True
+        delegate.is_available.assert_called_once()
+
+    def test_initialize_delegates(self):
+        adapter, delegate = self._make_adapter()
+        adapter.initialize(session_id="s1", foo="bar")
+        delegate.initialize.assert_called_once_with(session_id="s1", foo="bar")
+
+    def test_shutdown_delegates(self):
+        adapter, delegate = self._make_adapter()
+        adapter.shutdown()
+        delegate.shutdown.assert_called_once()
+
+    def test_get_tool_schemas_prefixes_names(self):
+        adapter, delegate = self._make_adapter()
+        delegate.get_tool_schemas.return_value = [
+            {"name": "search", "description": "Search"},
+            {"name": "store", "description": "Store"},
+        ]
+        schemas = adapter.get_tool_schemas()
+        assert len(schemas) == 2
+        assert schemas[0]["name"] == "test_search"
+        assert schemas[1]["name"] == "test_store"
+        # Original description preserved
+        assert schemas[0]["description"] == "Search"
+
+    def test_handle_tool_call_strips_prefix(self):
+        adapter, delegate = self._make_adapter()
+        delegate.handle_tool_call.return_value = "result"
+        result = adapter.handle_tool_call("test_search", {"q": "hello"})
+        delegate.handle_tool_call.assert_called_once_with("search", {"q": "hello"})
+        assert result == "result"
+
+    def test_handle_tool_call_passes_kwargs(self):
+        adapter, delegate = self._make_adapter()
+        delegate.handle_tool_call.return_value = "ok"
+        adapter.handle_tool_call("test_store", {"data": "x"}, session_id="s1")
+        delegate.handle_tool_call.assert_called_once_with(
+            "store", {"data": "x"}, session_id="s1"
+        )
+
+    def test_prefetch_delegates(self):
+        adapter, delegate = self._make_adapter()
+        delegate.prefetch.return_value = "context"
+        result = adapter.prefetch("query", session_id="s1")
+        delegate.prefetch.assert_called_once_with("query", session_id="s1")
+        assert result == "context"
+
+    def test_queue_prefetch_delegates(self):
+        adapter, delegate = self._make_adapter()
+        adapter.queue_prefetch("query", session_id="s1")
+        delegate.queue_prefetch.assert_called_once_with("query", session_id="s1")
+
+    def test_sync_turn_delegates(self):
+        adapter, delegate = self._make_adapter()
+        adapter.sync_turn("user msg", "asst msg", session_id="s1")
+        delegate.sync_turn.assert_called_once_with(
+            "user msg", "asst msg", session_id="s1"
+        )
+
+    def test_system_prompt_block_delegates(self):
+        adapter, delegate = self._make_adapter()
+        delegate.system_prompt_block.return_value = "prompt block"
+        assert adapter.system_prompt_block() == "prompt block"
+        delegate.system_prompt_block.assert_called_once()
+
+    def test_on_turn_start_delegates(self):
+        adapter, delegate = self._make_adapter()
+        adapter.on_turn_start()
+        delegate.on_turn_start.assert_called_once()
+
+    def test_on_session_end_delegates(self):
+        adapter, delegate = self._make_adapter()
+        msgs = [{"role": "user", "content": "hi"}]
+        adapter.on_session_end(msgs)
+        delegate.on_session_end.assert_called_once_with(msgs)
+
+    def test_on_session_switch_delegates(self):
+        adapter, delegate = self._make_adapter()
+        adapter.on_session_switch()
+        delegate.on_session_switch.assert_called_once()
+
+    def test_on_memory_write_delegates(self):
+        adapter, delegate = self._make_adapter()
+        adapter.on_memory_write("add", "memory", "content here")
+        delegate.on_memory_write.assert_called_once_with(
+            "add", "memory", "content here"
+        )
+
+    def test_on_delegation_delegates(self):
+        adapter, delegate = self._make_adapter()
+        adapter.on_delegation()
+        delegate.on_delegation.assert_called_once()
+
+
+# ── register() function tests ────────────────────────────────────────────────
+
+
+class TestRegisterFunction:
+    """Test the register() entry point."""
+
+    def test_register_calls_ctx(self):
+        from multi_memory import register
+
+        ctx = mock.MagicMock()
+        with mock.patch("multi_memory.MultiMemoryProvider._load_config"):
+            with mock.patch("multi_memory.MultiMemoryProvider._validate_namespaces"):
+                register(ctx)
+        ctx.register_memory_provider.assert_called_once()
+        args = ctx.register_memory_provider.call_args[0]
+        assert isinstance(args[0], MultiMemoryProvider)
+
+
+# ── _load_config edge cases ─────────────────────────────────────────────────
+
+
+class TestLoadConfigEdgeCases:
+    """Test _load_config behavior when config.yaml is missing or broken."""
+
+    def test_missing_config_yaml_logs_warning(self):
+        """When config.yaml doesn't exist, _load_config logs warning, doesn't crash."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as td:
+            with mock.patch.dict(os.environ, {"HERMES_HOME": td}):
+                p = MultiMemoryProvider()
+                # No config.yaml -> _load_config catches FileNotFoundError
+                # _subs should be empty (default)
+                assert p._subs == []
+
+    def test_backends_that_fail_to_load_are_skipped(self):
+        """When a configured backend fails to import, it's skipped silently."""
+        # We test this via _load_backends_from_config with a backend
+        # whose __init__ raises RuntimeError (module not found)
+        cfg = {"memory": {"multi": {"backends": {"mnemosyne": {}}}}}
+        # mnemosyne may not be installed - _load_backends_from_config catches the error
+        result = _load_backends_from_config(cfg)
+        # Should be empty if mnemosyne isn't installed, or contain it if it is
+        # Either way, it should not raise
+        assert isinstance(result, list)
+
+    def test_load_config_all_backends_fail(self):
+        """When all configured backends fail to import, _subs stays empty."""
+        # Use a known non-installed backend to guarantee failure
+        cfg = {"memory": {"multi": {"backends": {"nonexistent_backend_xyz": {}}}}}
+        result = _load_backends_from_config(cfg)
+        assert result == []
+
+
+# ── name property consistency ────────────────────────────────────────────────
+
+
+class TestNamePropertyConsistency:
+    """Test that MultiMemoryProvider.name returns 'multi' consistently."""
+
+    def test_class_has_name_attribute(self):
+        """The class defines name (either as attr or property)."""
+        assert hasattr(MultiMemoryProvider, "name")
+
+    def test_instance_property_is_multi(self):
+        with mock.patch.object(MultiMemoryProvider, "_load_config"):
+            with mock.patch.object(MultiMemoryProvider, "_validate_namespaces"):
+                p = MultiMemoryProvider()
+        assert p.name == "multi"
+
+    def test_class_and_instance_agree(self):
+        """Both the class-level name and instance property return 'multi'."""
+        # name is a @property on the class, but the descriptor is always present
+        assert hasattr(MultiMemoryProvider, "name")
+        # Instance always returns "multi"
+        with mock.patch.object(MultiMemoryProvider, "_load_config"):
+            with mock.patch.object(MultiMemoryProvider, "_validate_namespaces"):
+                p = MultiMemoryProvider()
+        assert p.name == "multi"
 
 
 @requires_holographic

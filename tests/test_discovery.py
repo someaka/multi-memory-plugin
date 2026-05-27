@@ -3,19 +3,18 @@ from __future__ import annotations
 
 from unittest import mock
 
-import pytest
 
 from multi_memory.discovery import (
     _BACKEND_REGISTRY,
+    _is_mnemosyne_plugin_installed,
     discover_backends,
     installed_backends,
 )
 
 
-def _mnemosyne_available() -> bool:
-    """Check if the mnemosyne module is actually importable in this environment."""
-    from importlib.util import find_spec
-    return find_spec("mnemosyne") is not None
+def _mnemosyne_plugin_available() -> bool:
+    """Check if the Mnemosyne user-installed plugin exists."""
+    return _is_mnemosyne_plugin_installed()
 
 
 class TestBackendRegistry:
@@ -40,6 +39,10 @@ class TestBackendRegistry:
         keys = [e[0] for e in _BACKEND_REGISTRY]
         assert "honcho" in keys
 
+    def test_mnemosyne_label_is_plugin(self):
+        entry = next(e for e in _BACKEND_REGISTRY if e[0] == "mnemosyne")
+        assert "plugin" in entry[2].lower()
+
 
 class TestDiscoverBackends:
     """discover_backends() probes each backend module."""
@@ -55,39 +58,49 @@ class TestDiscoverBackends:
             assert "label" in entry
             assert "installed" in entry
 
-    def test_mnemosyne_is_installed(self):
-        """mnemosyne is stdlib-backed (our package provides it)."""
-        if not _mnemosyne_available():
-            pytest.skip("mnemosyne is not installed in this environment")
-        results = discover_backends()
+    def test_mnemosyne_uses_plugin_check(self):
+        """Mnemosyne uses _is_mnemosyne_plugin_installed, not find_spec."""
+        with mock.patch(
+            "multi_memory.discovery._is_mnemosyne_plugin_installed",
+            return_value=True,
+        ):
+            results = discover_backends()
         mnemosyne = next(r for r in results if r["config_key"] == "mnemosyne")
         assert mnemosyne["installed"] is True
 
-    def test_installed_flag_true_for_available(self):
-        """Backend with installed module reports installed=True."""
-        if not _mnemosyne_available():
-            pytest.skip("mnemosyne is not installed in this environment")
-        results = discover_backends()
-        for entry in results:
-            if entry["config_key"] == "mnemosyne":
-                assert entry["installed"] is True
+    def test_mnemosyne_not_installed_when_plugin_missing(self):
+        with mock.patch(
+            "multi_memory.discovery._is_mnemosyne_plugin_installed",
+            return_value=False,
+        ):
+            results = discover_backends()
+        mnemosyne = next(r for r in results if r["config_key"] == "mnemosyne")
+        assert mnemosyne["installed"] is False
 
     def test_installed_flag_false_for_unavailable(self):
         """Backend with non-installed module reports installed=False."""
         with mock.patch(
             "multi_memory.discovery.find_spec", return_value=None
+        ), mock.patch(
+            "multi_memory.discovery._is_mnemosyne_plugin_installed",
+            return_value=False,
         ):
             results = discover_backends()
         for entry in results:
             assert entry["installed"] is False
 
-    def test_find_spec_called_with_module_paths(self):
-        """discover_backends calls find_spec for each module_path."""
-        with mock.patch("multi_memory.discovery.find_spec") as mock_fs:
+    def test_find_spec_called_for_non_mnemosyne_backends(self):
+        """discover_backends calls find_spec for mem0, holographic, honcho."""
+        with mock.patch(
+            "multi_memory.discovery._is_mnemosyne_plugin_installed",
+            return_value=False,
+        ), mock.patch(
+            "multi_memory.discovery.find_spec"
+        ) as mock_fs:
             mock_fs.return_value = mock.MagicMock()
             discover_backends()
+        # find_spec called for the 3 non-mnemosyne backends only
         expected_calls = [
-            mock.call("mnemosyne"),
             mock.call("plugins.memory.mem0"),
             mock.call("plugins.memory.holographic"),
             mock.call("plugins.memory.honcho"),
@@ -97,19 +110,24 @@ class TestDiscoverBackends:
     def test_individual_install_detection(self):
         """Each backend is independently checked."""
         def find_spec_side_effect(module):
-            if module == "mnemosyne":
+            if module == "plugins.memory.holographic":
                 return mock.MagicMock()
             return None
 
         with mock.patch(
+            "multi_memory.discovery._is_mnemosyne_plugin_installed",
+            return_value=False,
+        ), mock.patch(
             "multi_memory.discovery.find_spec",
             side_effect=find_spec_side_effect,
         ):
             results = discover_backends()
 
         mnemosyne = next(r for r in results if r["config_key"] == "mnemosyne")
+        holographic = next(r for r in results if r["config_key"] == "holographic")
         mem0 = next(r for r in results if r["config_key"] == "mem0")
-        assert mnemosyne["installed"] is True
+        assert mnemosyne["installed"] is False
+        assert holographic["installed"] is True
         assert mem0["installed"] is False
 
     def test_result_order_matches_registry(self):
@@ -129,11 +147,12 @@ class TestInstalledBackends:
         if result:
             assert all(isinstance(k, str) for k in result)
 
-    def test_includes_mnemosyne(self):
-        """mnemosyne may not be the installed package — check with mock."""
+    def test_includes_mnemosyne_when_plugin_exists(self):
         with mock.patch(
-            "multi_memory.discovery.find_spec",
-            side_effect=lambda m: mock.MagicMock() if m == "mnemosyne" else None,
+            "multi_memory.discovery._is_mnemosyne_plugin_installed",
+            return_value=True,
+        ), mock.patch(
+            "multi_memory.discovery.find_spec", return_value=None,
         ):
             result = installed_backends()
         assert "mnemosyne" in result
@@ -141,6 +160,9 @@ class TestInstalledBackends:
     def test_empty_when_none_installed(self):
         with mock.patch(
             "multi_memory.discovery.find_spec", return_value=None
+        ), mock.patch(
+            "multi_memory.discovery._is_mnemosyne_plugin_installed",
+            return_value=False,
         ):
             result = installed_backends()
         assert result == []

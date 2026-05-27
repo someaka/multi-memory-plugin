@@ -20,6 +20,7 @@ import logging
 import os
 import sys
 import traceback
+from pathlib import Path
 from typing import Any
 
 logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
@@ -34,9 +35,10 @@ BACKENDS: dict[str, BackendDef] = {
     "mnemosyne": {
         "module": "mnemosyne",
         "class": "MemoryProvider",
-        "pip": "stdlib-only",
+        "pip": "plugin (github.com/AxDSan/mnemosyne)",
         "env_vars": [],
         "config_key": "mnemosyne",
+        "use_plugin_loader": True,
     },
     "holographic": {
         "module": "plugins.memory.holographic",
@@ -79,6 +81,18 @@ def _try_import(module: str, cls_name: str) -> type | None:
 def _env_status(env_vars: list[str]) -> tuple[bool, str]:
     """Check required env vars. Returns (ok, detail)."""
     missing = [v for v in env_vars if not os.environ.get(v)]
+    # Also check mem0.json for MEM0_API_KEY
+    if "MEM0_API_KEY" in missing:
+        try:
+            hermes_home = Path(os.environ.get("HERMES_HOME", Path.home() / ".hermes"))
+            mem0_json = hermes_home / "mem0.json"
+            if mem0_json.exists():
+                import json as _json
+                cfg = _json.loads(mem0_json.read_text())
+                if cfg.get("api_key"):
+                    missing.remove("MEM0_API_KEY")
+        except Exception:
+            pass
     if not missing:
         return (True, "all set")
     return (False, f"missing: {', '.join(missing)}")
@@ -107,8 +121,17 @@ def check_backend(name: str, verbose: bool = False) -> BackendDef:
     result["name"] = name
     result["status"] = "pending"
 
-    # 1. Module import
-    cls = _try_import(info["module"], info["class"])
+    # 1. Module import — special handling for plugin-loader backends
+    if info.get("use_plugin_loader"):
+        try:
+            sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+            from plugins.memory import load_memory_provider
+            provider = load_memory_provider(name)
+            cls = type(provider) if provider else None
+        except Exception:
+            cls = _try_import(info["module"], info["class"])
+    else:
+        cls = _try_import(info["module"], info["class"])
     if cls is None:
         result["status"] = "unavailable"
         result["error"] = f"module '{info['module']}' not installed"

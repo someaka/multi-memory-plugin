@@ -63,10 +63,15 @@ memory:
 ```
 Hermes core → MemoryManager._tool_to_provider["mnemosyne_recall"]
            → MultiMemoryProvider.handle_tool_call("mnemosyne_recall", args)
-           → strips "mnemosyne_" → inner = "recall"
-           → _MnemosyneAdapter.handle_tool_call("recall", args)
-           → real mnemosyne MemoryProvider.handle_tool_call("recall", args)
+           → prefix match: "mnemosyne_" → routes to _MnemosyneAdapter
+           → _MnemosyneAdapter.handle_tool_call("mnemosyne_recall", args)
+           → real mnemosyne MemoryProvider.handle_tool_call("mnemosyne_recall", args)
 ```
+
+Each adapter handles prefix differently based on how the real provider names its tools:
+- **Mnemosyne**: tools are self-prefixed (`mnemosyne_recall`) — adapter passes through
+- **Mem0 / Honcho**: tools are self-prefixed (`mem0_search`) — adapter strips+re-adds
+- **Holographic**: tools are unprefixed (`fact_store`) — base class adds prefix
 
 All lifecycle hooks (`initialize`, `prefetch`, `sync_turn`, `shutdown`, etc.) fan out
 to every active sub-provider with per-provider error isolation (`try/except`).

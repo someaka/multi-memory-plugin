@@ -87,6 +87,36 @@ class TestLoadBackendsFromConfig:
         result = _load_backends_from_config(cfg)
         assert any(a.name == "holographic" for a in result)
 
+    def test_available_backend_is_loaded(self):
+        """Backend that is_available() returns True gets appended (covers the happy path)."""
+        mock_adapter = mock.MagicMock()
+        mock_adapter.is_available.return_value = True
+        mock_adapter.name = "fake_backend"
+
+        mock_cls = mock.MagicMock()
+        mock_cls.return_value = mock_adapter
+        mock_cls.CONFIG_KEY = "fake"
+
+        with mock.patch("multi_memory._SUB_CLASSES", (mock_cls,)):
+            cfg = {"memory": {"multi": {"backends": {"fake": {}}}}}
+            result = _load_backends_from_config(cfg)
+        assert len(result) == 1
+        assert result[0].name == "fake_backend"
+
+    def test_unavailable_backend_is_skipped(self):
+        """Backend that is_available() returns False is not loaded."""
+        mock_adapter = mock.MagicMock()
+        mock_adapter.is_available.return_value = False
+
+        mock_cls = mock.MagicMock()
+        mock_cls.return_value = mock_adapter
+        mock_cls.CONFIG_KEY = "fake"
+
+        with mock.patch("multi_memory._SUB_CLASSES", (mock_cls,)):
+            cfg = {"memory": {"multi": {"backends": {"fake": {}}}}}
+            result = _load_backends_from_config(cfg)
+        assert result == []
+
 
 # ── _try_import tests ───────────────────────────────────────────────────────
 
@@ -164,6 +194,15 @@ class TestSubProviderAdapter:
         assert adapter_cls.CONFIG_KEY == "honcho"
         assert adapter_cls.MODULE == "plugins.memory.honcho"
         assert adapter_cls.PREFIX == "honcho"
+
+    def test_mnemosyne_name_override(self):
+        """_MnemosyneAdapter.name returns 'mnemosyne' (hardcoded override)."""
+        # The name property is a class-level override, not a delegation
+        # We can test it by creating a mock instance and checking the property
+        assert _MnemosyneAdapter.name.fget is not None  # property exists
+        # Create a mock instance to test the property getter
+        adapter = object.__new__(_MnemosyneAdapter)
+        assert adapter.name == "mnemosyne"
 
     @requires_holographic
     def test_get_tool_schemas_prefixes_names(self):
@@ -260,7 +299,6 @@ class TestLifecycleHooks:
         """initialize() is called on every sub-provider."""
         names_called = []
         for sub in provider._subs:
-            original = sub.initialize
             sub.initialize = lambda *a, ns=sub.name, **kw: names_called.append(ns)
         provider.initialize(session_id="test-session")
         expected = [s.name for s in provider._subs]
@@ -291,7 +329,6 @@ class TestLifecycleHooks:
         """shutdown() calls sub-providers in reversed order."""
         call_order = []
         for sub in provider._subs:
-            original = sub.shutdown
             sub.shutdown = lambda ns=sub.name: call_order.append(ns)
         provider.shutdown()
         expected = [s.name for s in reversed(provider._subs)]
@@ -332,7 +369,6 @@ class TestLifecycleHooks:
         """queue_prefetch() calls every sub-provider."""
         call_count = [0]
         for sub in provider._subs:
-            original = sub.queue_prefetch
             sub.queue_prefetch = lambda *a, **kw: call_count.__setitem__(0, call_count[0] + 1)
         provider.queue_prefetch("test query", session_id="s1")
         assert call_count[0] == len(provider._subs)
@@ -341,7 +377,6 @@ class TestLifecycleHooks:
         """sync_turn() calls every sub-provider."""
         calls = []
         for sub in provider._subs:
-            original = sub.sync_turn
             sub.sync_turn = lambda u, a, ns=sub.name, **kw: calls.append(ns)
         provider.sync_turn("user", "assistant", session_id="s1")
         expected = [s.name for s in provider._subs]
@@ -428,7 +463,6 @@ class TestLifecycleHooks:
 
     def test_prefetch_with_non_empty_results(self, provider):
         """prefetch concatenates non-empty results with sub names."""
-        names_captured = []
         for sub in provider._subs:
             sub.prefetch = lambda *a, ns=sub.name, **kw: f"result from {ns}"
         result = provider.prefetch("test query", session_id="s1")

@@ -71,6 +71,11 @@ from .budget import ToolBudgetWarning
 from .validate import NamespaceValidator
 from .health import HealthTracker
 
+__all__ = [
+    "MultiMemoryProvider",
+    "register",
+]
+
 logger = logging.getLogger(__name__)
 
 _SUB_CLASSES = _MnemosyneAdapter, _Mem0Adapter, _HolographicAdapter, _HonchoAdapter
@@ -104,7 +109,7 @@ class MultiMemoryProvider(MemoryProvider):
             hermes_home = os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes"))
             cfg_path = os.path.join(hermes_home, "config.yaml")
             with open(cfg_path) as f:
-                cfg = yaml.load(f, Loader=yaml.SafeLoader) or {}
+                cfg = yaml.safe_load(f) or {}
             self._subs = _load_backends_from_config(cfg)
             logger.info(
                 "[multi-memory] loaded %d backends: %s",

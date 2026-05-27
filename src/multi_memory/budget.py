@@ -18,6 +18,8 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_THRESHOLD = 20
 
+__all__ = ["ToolBudgetWarning", "DEFAULT_THRESHOLD"]
+
 
 class ToolBudgetWarning:
     """Lightweight threshold checker for tool schema counts.

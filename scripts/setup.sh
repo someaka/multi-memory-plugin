@@ -141,30 +141,7 @@ if [[ -f "$CONFIG_FILE" ]]; then
     if grep -q "^memory:" "$CONFIG_FILE" 2>/dev/null; then
         warn "Config already has a 'memory:' section."
         if prompt_yn "Replace it with the generated multi-memory config?" "n"; then
-            # Use Python for safe YAML manipulation
-            "$PYTHON" -c "
-import yaml, sys
-path = '$CONFIG_FILE'
-with open(path) as f:
-    cfg = yaml.safe_load(f) or {}
-backends = {}
-for label in ${INSTALLED[@]@Q}:
-    try:
-        key = ${BACKEND_KEY[@]@Q}
-        # ^ hacky, use python dict
-    except:
-        pass
-cfg['memory'] = {
-    'provider': 'multi',
-    'multi': {
-        'backends': {k: {} for k in ['${INSTALLED[@]}'// .*/]}  # fallback
-    }
-}
-with open(path, 'w') as f:
-    yaml.dump(cfg, f, default_flow_style=False)
-print('Updated')
-"
-            # Cleaner approach: just use a heredoc with python
+            # Use Python for safe YAML manipulation via heredoc
             "$PYTHON" << PYEOF
 import yaml
 

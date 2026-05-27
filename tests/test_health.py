@@ -9,12 +9,10 @@ import pytest
 
 from multi_memory.health import (
     DEFAULT_FAILURE_LIMIT,
-    DEFAULT_TIMEOUT,
     CircuitOpenError,
     HealthTracker,
     timeout_wrapper,
 )
-from multi_memory.health import logger as health_logger  # for caplog tests
 
 
 class TestHealthTracker:

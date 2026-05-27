@@ -17,6 +17,8 @@ _BACKEND_REGISTRY: list[tuple[str, str, str]] = [
     ("honcho",      "plugins.memory.honcho",     "Honcho"),
 ]
 
+__all__ = ["discover_backends", "installed_backends"]
+
 
 def discover_backends() -> list[dict[str, str | bool]]:
     """Probe all four known backends and report installation status.

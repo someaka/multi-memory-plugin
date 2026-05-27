@@ -29,6 +29,8 @@ import yaml
 _HERMES_HOME = os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes"))
 _CONFIG_PATH = os.path.join(_HERMES_HOME, "config.yaml")
 
+__all__ = ["load_multi_config", "get_enabled_backends"]
+
 
 def load_multi_config() -> dict[str, Any]:
     try:

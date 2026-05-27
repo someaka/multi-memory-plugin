@@ -11,6 +11,8 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+__all__ = ["NamespaceValidator"]
+
 
 class NamespaceValidator:
     """Check that adapter classes carry a non-empty ``PREFIX``.

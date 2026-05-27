@@ -18,6 +18,8 @@ logger = logging.getLogger(__name__)
 DEFAULT_FAILURE_LIMIT = 3
 DEFAULT_TIMEOUT = 30.0
 
+__all__ = ["HealthTracker", "CircuitOpenError", "timeout_wrapper", "DEFAULT_FAILURE_LIMIT", "DEFAULT_TIMEOUT"]
+
 
 class CircuitOpenError(RuntimeError):
     """Raised when a call is skipped because the circuit is open."""

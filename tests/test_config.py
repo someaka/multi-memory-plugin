@@ -1,10 +1,7 @@
 """Tests for multi_memory.config and config-adjacent functions in __init__.py."""
 from __future__ import annotations
 
-import os
 from unittest import mock
-
-import pytest
 
 from multi_memory import _normalise_multi_config, _load_backends_from_config
 from multi_memory.config import load_multi_config, get_enabled_backends

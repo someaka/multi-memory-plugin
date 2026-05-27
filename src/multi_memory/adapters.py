@@ -86,20 +86,23 @@ class _SubProviderAdapter:
     def system_prompt_block(self) -> str:
         return self._delegate.system_prompt_block()
 
-    def on_turn_start(self) -> None:
-        self._delegate.on_turn_start()
+    def on_turn_start(self, turn_number: int = 0, message: str = "", **kwargs: Any) -> None:
+        self._delegate.on_turn_start(turn_number, message, **kwargs)
 
     def on_session_end(self, messages: list[dict]) -> None:
         self._delegate.on_session_end(messages)
 
-    def on_session_switch(self) -> None:
-        self._delegate.on_session_switch()
+    def on_session_switch(self, new_session_id: str = "", *, parent_session_id: str = "", reset: bool = False, **kwargs: Any) -> None:
+        self._delegate.on_session_switch(new_session_id, parent_session_id=parent_session_id, reset=reset, **kwargs)
 
-    def on_memory_write(self, action: str, target: str, content: str) -> None:
-        self._delegate.on_memory_write(action, target, content)
+    def on_memory_write(self, action: str, target: str, content: str, metadata: dict[str, Any] | None = None) -> None:
+        self._delegate.on_memory_write(action, target, content, metadata)
 
-    def on_delegation(self) -> None:
-        self._delegate.on_delegation()
+    def on_delegation(self, task: str = "", result: str = "", *, child_session_id: str = "", **kwargs: Any) -> None:
+        self._delegate.on_delegation(task, result, child_session_id=child_session_id, **kwargs)
+
+    def on_pre_compress(self, messages: list[dict[str, Any]]) -> str:
+        return self._delegate.on_pre_compress(messages)
 
 
 class _MnemosyneAdapter(_SubProviderAdapter):

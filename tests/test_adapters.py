@@ -385,8 +385,8 @@ class TestLifecycleHooks:
     def test_on_turn_start_calls_all_subs(self, provider):
         calls = []
         for sub in provider._subs:
-            sub.on_turn_start = lambda ns=sub.name: calls.append(ns)
-        provider.on_turn_start()
+            sub.on_turn_start = lambda *a, ns=sub.name, **kw: calls.append(ns)
+        provider.on_turn_start(42, "hello")
         assert calls == [s.name for s in provider._subs]
 
     def test_on_session_end_calls_all_subs(self, provider):
@@ -399,22 +399,22 @@ class TestLifecycleHooks:
     def test_on_session_switch_calls_all_subs(self, provider):
         calls = []
         for sub in provider._subs:
-            sub.on_session_switch = lambda ns=sub.name: calls.append(ns)
-        provider.on_session_switch()
+            sub.on_session_switch = lambda *a, ns=sub.name, **kw: calls.append(ns)
+        provider.on_session_switch("new-sid", parent_session_id="old-sid", reset=True)
         assert calls == [s.name for s in provider._subs]
 
     def test_on_memory_write_calls_all_subs(self, provider):
         calls = []
         for sub in provider._subs:
-            sub.on_memory_write = lambda a, t, c, ns=sub.name: calls.append(ns)
-        provider.on_memory_write("add", "memory", "content")
+            sub.on_memory_write = lambda *a, ns=sub.name, **kw: calls.append(ns)
+        provider.on_memory_write("add", "memory", "content", {"key": "val"})
         assert calls == [s.name for s in provider._subs]
 
     def test_on_delegation_calls_all_subs(self, provider):
         calls = []
         for sub in provider._subs:
-            sub.on_delegation = lambda ns=sub.name: calls.append(ns)
-        provider.on_delegation()
+            sub.on_delegation = lambda *a, ns=sub.name, **kw: calls.append(ns)
+        provider.on_delegation("task", "result", child_session_id="child1")
         assert calls == [s.name for s in provider._subs]
 
     def test_queue_prefetch_exception_isolation(self, provider):
@@ -441,7 +441,7 @@ class TestLifecycleHooks:
         for i, sub in enumerate(provider._subs):
             if i == 0:
                 sub.on_turn_start.side_effect = RuntimeError("turn fail")
-        provider.on_turn_start()  # should not raise
+        provider.on_turn_start(1, "msg")  # should not raise
 
     def test_on_session_end_exception_isolation(self, provider):
         for i, sub in enumerate(provider._subs):
@@ -453,13 +453,47 @@ class TestLifecycleHooks:
         for i, sub in enumerate(provider._subs):
             if i == 0:
                 sub.on_session_switch.side_effect = RuntimeError("switch fail")
-        provider.on_session_switch()  # should not raise
+        provider.on_session_switch("new-sid")  # should not raise
 
     def test_on_delegation_exception_isolation(self, provider):
         for i, sub in enumerate(provider._subs):
             if i == 0:
                 sub.on_delegation.side_effect = RuntimeError("delegation fail")
-        provider.on_delegation()  # should not raise
+        provider.on_delegation("task", "result")  # should not raise
+
+    def test_on_memory_write_with_metadata(self, provider):
+        """on_memory_write passes metadata to all subs."""
+        calls = []
+        for sub in provider._subs:
+            sub.on_memory_write = lambda *a, ns=sub.name, **kw: calls.append((ns, a))
+        provider.on_memory_write("add", "memory", "content", {"origin": "test"})
+        assert len(calls) == len(provider._subs)
+        for _, args in calls:
+            assert args[3] == {"origin": "test"}
+
+    def test_on_pre_compress_collects_results(self, provider):
+        """on_pre_compress collects non-empty results from all subs."""
+        for sub in provider._subs:
+            sub.on_pre_compress = lambda *a, ns=sub.name, **kw: f"extract from {ns}"
+        result = provider.on_pre_compress([{"role": "user", "content": "hi"}])
+        assert isinstance(result, str)
+        for sub in provider._subs:
+            assert sub.name in result
+
+    def test_on_pre_compress_empty_when_all_empty(self, provider):
+        """on_pre_compress returns '' when all subs return empty."""
+        for sub in provider._subs:
+            sub.on_pre_compress.return_value = ""
+        result = provider.on_pre_compress([{"role": "user", "content": "hi"}])
+        assert result == ""
+
+    def test_on_pre_compress_exception_isolation(self, provider):
+        """on_pre_compress handles per-sub exceptions."""
+        for i, sub in enumerate(provider._subs):
+            if i == 0:
+                sub.on_pre_compress.side_effect = RuntimeError("compress fail")
+        result = provider.on_pre_compress([{"role": "user", "content": "hi"}])
+        assert isinstance(result, str)  # doesn't raise
 
     def test_prefetch_with_non_empty_results(self, provider):
         """prefetch concatenates non-empty results with sub names."""
@@ -712,8 +746,8 @@ class TestSubProviderAdapterDelegation:
 
     def test_on_turn_start_delegates(self):
         adapter, delegate = self._make_adapter()
-        adapter.on_turn_start()
-        delegate.on_turn_start.assert_called_once()
+        adapter.on_turn_start(42, "hello")
+        delegate.on_turn_start.assert_called_once_with(42, "hello")
 
     def test_on_session_end_delegates(self):
         adapter, delegate = self._make_adapter()
@@ -723,20 +757,32 @@ class TestSubProviderAdapterDelegation:
 
     def test_on_session_switch_delegates(self):
         adapter, delegate = self._make_adapter()
-        adapter.on_session_switch()
-        delegate.on_session_switch.assert_called_once()
+        adapter.on_session_switch("new-sid", parent_session_id="old", reset=True)
+        delegate.on_session_switch.assert_called_once_with(
+            "new-sid", parent_session_id="old", reset=True
+        )
 
     def test_on_memory_write_delegates(self):
         adapter, delegate = self._make_adapter()
-        adapter.on_memory_write("add", "memory", "content here")
+        adapter.on_memory_write("add", "memory", "content here", {"origin": "test"})
         delegate.on_memory_write.assert_called_once_with(
-            "add", "memory", "content here"
+            "add", "memory", "content here", {"origin": "test"}
         )
 
     def test_on_delegation_delegates(self):
         adapter, delegate = self._make_adapter()
-        adapter.on_delegation()
-        delegate.on_delegation.assert_called_once()
+        adapter.on_delegation("task", "result", child_session_id="c1")
+        delegate.on_delegation.assert_called_once_with(
+            "task", "result", child_session_id="c1"
+        )
+
+    def test_on_pre_compress_delegates(self):
+        adapter, delegate = self._make_adapter()
+        delegate.on_pre_compress.return_value = "compressed"
+        msgs = [{"role": "user", "content": "hi"}]
+        result = adapter.on_pre_compress(msgs)
+        delegate.on_pre_compress.assert_called_once_with(msgs)
+        assert result == "compressed"
 
 
 # ── register() function tests ────────────────────────────────────────────────
@@ -833,25 +879,26 @@ class TestHolographicAdapterLifecycle:
         adapter.shutdown()  # should not raise
 
     def test_on_turn_start(self, adapter):
-        # The real MemoryProvider's on_turn_start needs turn_number + message
-        # but the adapter doesn't forward them. We test the adapter method
-        # with a mock that tolerates the call.
         adapter._delegate.on_turn_start = mock.MagicMock()
-        adapter.on_turn_start()  # should not raise
-        adapter._delegate.on_turn_start.assert_called_once()
+        adapter.on_turn_start(1, "msg")  # should not raise
+        adapter._delegate.on_turn_start.assert_called_once_with(1, "msg")
 
     def test_on_session_end(self, adapter):
         adapter.on_session_end([])  # should not raise
 
     def test_on_session_switch(self, adapter):
         adapter._delegate.on_session_switch = mock.MagicMock()
-        adapter.on_session_switch()  # should not raise
-        adapter._delegate.on_session_switch.assert_called_once()
+        adapter.on_session_switch("new-sid", parent_session_id="old", reset=True)  # should not raise
+        adapter._delegate.on_session_switch.assert_called_once_with(
+            "new-sid", parent_session_id="old", reset=True
+        )
 
     def test_on_delegation(self, adapter):
         adapter._delegate.on_delegation = mock.MagicMock()
-        adapter.on_delegation()  # should not raise
-        adapter._delegate.on_delegation.assert_called_once()
+        adapter.on_delegation("task", "result", child_session_id="c1")  # should not raise
+        adapter._delegate.on_delegation.assert_called_once_with(
+            "task", "result", child_session_id="c1"
+        )
 
     def test_name_property(self, adapter):
         assert adapter.name == "holographic"

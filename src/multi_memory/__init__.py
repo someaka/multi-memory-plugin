@@ -55,11 +55,12 @@ except ImportError:
         def prefetch(self, query: str, **kwargs) -> str: return ""
         def queue_prefetch(self, query: str, **kwargs) -> None: pass
         def sync_turn(self, user_content: str, assistant_content: str, **kwargs) -> None: pass
-        def on_turn_start(self) -> None: pass
+        def on_turn_start(self, turn_number: int = 0, message: str = "", **kwargs: Any) -> None: pass
         def on_session_end(self, messages: list[dict]) -> None: pass
-        def on_session_switch(self) -> None: pass
-        def on_memory_write(self, action: str, target: str, content: str) -> None: pass
-        def on_delegation(self) -> None: pass
+        def on_session_switch(self, new_session_id: str = "", *, parent_session_id: str = "", reset: bool = False, **kwargs: Any) -> None: pass
+        def on_memory_write(self, action: str, target: str, content: str, metadata: dict[str, Any] | None = None) -> None: pass
+        def on_delegation(self, task: str = "", result: str = "", *, child_session_id: str = "", **kwargs: Any) -> None: pass
+        def on_pre_compress(self, messages: list[dict]) -> str: return ""
 from .adapters import (
     _SubProviderAdapter,
     _MnemosyneAdapter,
@@ -209,10 +210,10 @@ class MultiMemoryProvider(MemoryProvider):
             except Exception:
                 pass  # non-fatal
 
-    def on_turn_start(self) -> None:
+    def on_turn_start(self, turn_number: int = 0, message: str = "", **kwargs: Any) -> None:
         for sub in self._subs:
             try:
-                sub.on_turn_start()
+                sub.on_turn_start(turn_number, message, **kwargs)
             except Exception:
                 pass
 
@@ -223,26 +224,37 @@ class MultiMemoryProvider(MemoryProvider):
             except Exception:
                 pass
 
-    def on_session_switch(self) -> None:
+    def on_session_switch(self, new_session_id: str = "", *, parent_session_id: str = "", reset: bool = False, **kwargs: Any) -> None:
         for sub in self._subs:
             try:
-                sub.on_session_switch()
+                sub.on_session_switch(new_session_id, parent_session_id=parent_session_id, reset=reset, **kwargs)
             except Exception:
                 pass
 
-    def on_memory_write(self, action: str, target: str, content: str) -> None:
+    def on_memory_write(self, action: str, target: str, content: str, metadata: dict[str, Any] | None = None) -> None:
         for sub in self._subs:
             try:
-                sub.on_memory_write(action, target, content)
+                sub.on_memory_write(action, target, content, metadata)
             except Exception:
                 pass
 
-    def on_delegation(self) -> None:
+    def on_delegation(self, task: str = "", result: str = "", *, child_session_id: str = "", **kwargs: Any) -> None:
         for sub in self._subs:
             try:
-                sub.on_delegation()
+                sub.on_delegation(task, result, child_session_id=child_session_id, **kwargs)
             except Exception:
                 pass
+
+    def on_pre_compress(self, messages: list[dict[str, Any]]) -> str:
+        parts = []
+        for sub in self._subs:
+            try:
+                r = sub.on_pre_compress(messages)
+                if r:
+                    parts.append(f"[{sub.name}] {r}")
+            except Exception:
+                pass
+        return "\n\n".join(parts) if parts else ""
 
 
 def _normalise_multi_config(cfg: dict | None) -> dict:

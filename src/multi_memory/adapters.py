@@ -22,7 +22,12 @@ logger = logging.getLogger(__name__)
 
 def _try_import(module: str, cls: str) -> type | None:
     """Return a provider class or None if module absent / cannot import."""
-    if find_spec(module) is None:
+    try:
+        if find_spec(module) is None:
+            return None
+    except (ModuleNotFoundError, ValueError):
+        # ModuleNotFoundError: parent package missing (e.g. "plugins" not installed)
+        # ValueError: module name is invalid
         return None
     try:
         mod = importlib.import_module(module)

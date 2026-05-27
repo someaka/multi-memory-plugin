@@ -2,12 +2,27 @@
 from __future__ import annotations
 
 import os
+from importlib.util import find_spec
 from unittest import mock
 
 import pytest
 
 from multi_memory import _normalise_multi_config, _load_backends_from_config
 from multi_memory.config import load_multi_config, get_enabled_backends
+
+
+def _holographic_available() -> bool:
+    """Check if the holographic backend is importable."""
+    try:
+        return find_spec("plugins.memory.holographic") is not None
+    except (ModuleNotFoundError, ValueError):
+        return False
+
+
+requires_holographic = pytest.mark.skipif(
+    not _holographic_available(),
+    reason="holographic backend not available (requires Hermes plugins package)",
+)
 
 
 class TestNormaliseMultiConfig:
@@ -54,6 +69,7 @@ class TestLoadBackendsFromConfig:
         result = _load_backends_from_config({})
         assert result == []
 
+    @requires_holographic
     def test_investigation_c_format(self):
         """INVESTIGATION-C canonical: memory.providers list."""
         cfg = {"memory": {"providers": ["holographic"]}}
@@ -80,6 +96,7 @@ class TestLoadBackendsFromConfig:
         result = _load_backends_from_config(cfg)
         assert result == []
 
+    @requires_holographic
     def test_enabled_str_true(self):
         """String 'True' should NOT disable (it's truthy)."""
         cfg = {"memory": {"multi": {"backends": {"holographic": "True"}}}}
@@ -87,6 +104,7 @@ class TestLoadBackendsFromConfig:
         names = [a.name for a in result]
         assert "holographic" in names
 
+    @requires_holographic
     def test_enabled_int_1(self):
         """Integer 1 should not be disabled."""
         cfg = {"memory": {"multi": {"backends": {"holographic": 1}}}}

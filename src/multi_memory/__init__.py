@@ -27,8 +27,39 @@ from typing import Any
 
 import yaml
 
-from tools.registry import tool_error
-from agent.memory_provider import MemoryProvider
+try:
+    from tools.registry import tool_error
+except ImportError:
+    def tool_error(msg: str) -> str:
+        """Standalone fallback when Hermes tools.registry is unavailable."""
+        return f"[multi-memory] ERROR: {msg}"
+
+try:
+    from agent.memory_provider import MemoryProvider
+except ImportError:
+    # Standalone / testing: provide a minimal base class matching the ABC
+    import abc
+    class MemoryProvider(abc.ABC):  # type: ignore[no-redef]
+        """Stub base class for standalone testing outside Hermes."""
+        name: str = ""
+        @abc.abstractmethod
+        def is_available(self) -> bool: ...
+        @abc.abstractmethod
+        def initialize(self, session_id: str, **kwargs) -> None: ...
+        @abc.abstractmethod
+        def get_tool_schemas(self) -> list[dict]: ...
+        @abc.abstractmethod
+        def handle_tool_call(self, tool_name: str, args: dict, **kwargs) -> str: ...
+        def shutdown(self) -> None: pass
+        def system_prompt_block(self) -> str: return ""
+        def prefetch(self, query: str, **kwargs) -> str: return ""
+        def queue_prefetch(self, query: str, **kwargs) -> None: pass
+        def sync_turn(self, user_content: str, assistant_content: str, **kwargs) -> None: pass
+        def on_turn_start(self) -> None: pass
+        def on_session_end(self, messages: list[dict]) -> None: pass
+        def on_session_switch(self) -> None: pass
+        def on_memory_write(self, action: str, target: str, content: str) -> None: pass
+        def on_delegation(self) -> None: pass
 from .adapters import (
     _SubProviderAdapter,
     _MnemosyneAdapter,

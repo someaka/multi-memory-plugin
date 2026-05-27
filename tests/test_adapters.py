@@ -7,6 +7,7 @@ This file covers:
 """
 from __future__ import annotations
 
+from importlib.util import find_spec
 from unittest import mock
 
 import pytest
@@ -19,6 +20,20 @@ from multi_memory.adapters import (
     _MnemosyneAdapter,
     _HonchoAdapter,
     _try_import,
+)
+
+
+def _holographic_available() -> bool:
+    """Check if the holographic backend is importable."""
+    try:
+        return find_spec("plugins.memory.holographic") is not None
+    except (ModuleNotFoundError, ValueError):
+        return False
+
+
+requires_holographic = pytest.mark.skipif(
+    not _holographic_available(),
+    reason="holographic backend not available (requires Hermes plugins package)",
 )
 
 
@@ -77,6 +92,7 @@ class TestLoadBackendsFromConfig:
         result = _load_backends_from_config(cfg)
         assert "mnemosyne" not in [a.name for a in result]
 
+    @requires_holographic
     def test_empty_dict_enabled(self):
         cfg = {"memory": {"multi": {"backends": {"holographic": {}}}}}
         result = _load_backends_from_config(cfg)
@@ -147,6 +163,7 @@ class TestSubProviderAdapter:
         assert adapter_cls.MODULE == "plugins.memory.mem0"
         assert adapter_cls.PREFIX == "mem0"
 
+    @requires_holographic
     def test_holographic_adapter_properties(self):
         adapter = _HolographicAdapter()
         assert adapter.CONFIG_KEY == "holographic"
@@ -159,6 +176,7 @@ class TestSubProviderAdapter:
         assert adapter_cls.MODULE == "plugins.memory.honcho"
         assert adapter_cls.PREFIX == "honcho"
 
+    @requires_holographic
     def test_get_tool_schemas_prefixes_names(self):
         """Tool schemas are prefixed with the adapter's PREFIX."""
         adapter = _HolographicAdapter()
@@ -167,6 +185,7 @@ class TestSubProviderAdapter:
         for s in schemas:
             assert s["name"].startswith("holographic_")
 
+    @requires_holographic
     def test_handle_tool_call_strips_prefix(self):
         """handle_tool_call strips the PREFIX before delegating."""
         adapter = _HolographicAdapter()
@@ -174,6 +193,7 @@ class TestSubProviderAdapter:
         result = adapter.handle_tool_call("holographic_fact_store", {"action": "list"})
         assert isinstance(result, str)  # returns a string (may be error or success)
 
+    @requires_holographic
     def test_is_available_delegates(self):
         adapter = _HolographicAdapter()
         assert isinstance(adapter.is_available(), bool)
@@ -184,8 +204,31 @@ class TestSubProviderAdapter:
 
 @pytest.fixture
 def provider():
-    """Return a MultiMemoryProvider loaded with real backends."""
-    return MultiMemoryProvider()
+    """Return a MultiMemoryProvider with mock sub-providers for testing.
+
+    Uses mock backends so tests work regardless of which real backends
+    are installed on the system.
+    """
+    p = MultiMemoryProvider()
+
+    # Create mock sub-adapters for testing
+    mock_holo = mock.MagicMock()
+    mock_holo.name = "holographic"
+    mock_holo.get_tool_schemas.return_value = [
+        {"name": "holographic_fact_store", "description": "Store facts"},
+        {"name": "holographic_probe", "description": "Probe entities"},
+    ]
+    mock_holo.system_prompt_block.return_value = "Holographic memory active"
+
+    mock_memo = mock.MagicMock()
+    mock_memo.name = "mnemosyne"
+    mock_memo.get_tool_schemas.return_value = [
+        {"name": "mnemosyne_search", "description": "Search memories"},
+    ]
+    mock_memo.system_prompt_block.return_value = ""
+
+    p._subs = [mock_holo, mock_memo]
+    return p
 
 
 class TestMultiMemoryProvider:
@@ -464,7 +507,9 @@ class TestMultiMemoryProviderEdgeCases:
         schemas = provider.get_tool_schemas()
         if not schemas:
             pytest.skip("No tool schemas available")
-        # Pick the last schema's name to test prefix routing
+        # Make all mock subs return a string
+        for sub in provider._subs:
+            sub.handle_tool_call.return_value = "mocked result"
         result = provider.handle_tool_call(schemas[-1]["name"], {})
         assert isinstance(result, str)
 
@@ -539,6 +584,7 @@ class TestMultiMemoryProviderEdgeCases:
             assert p._subs == []  # fallback: empty subs on config failure
 
 
+@requires_holographic
 class TestHolographicAdapterLifecycle:
     """Direct tests on the holographic adapter's delegate methods."""
 

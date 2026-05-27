@@ -32,7 +32,10 @@ def discover_backends() -> list[dict[str, str | bool]]:
     """
     results: list[dict[str, str | bool]] = []
     for config_key, module_path, label in _BACKEND_REGISTRY:
-        installed = find_spec(module_path) is not None
+        try:
+            installed = find_spec(module_path) is not None
+        except (ModuleNotFoundError, ValueError):
+            installed = False
         results.append(
             {
                 "config_key": config_key,

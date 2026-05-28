@@ -1013,37 +1013,55 @@ class TestCoverageGaps:
 
     def test_mnemosyne_adapter_plugin_loader_returns_none(self):
         """_MnemosyneAdapter raises RuntimeError when plugin loader returns None."""
-        with mock.patch(
-            "plugins.memory.load_memory_provider",
-            return_value=None,
-        ):
+        import sys
+        mock_pm = mock.MagicMock()
+        mock_pm.load_memory_provider.return_value = None
+        old = sys.modules.get("plugins.memory")
+        sys.modules["plugins.memory"] = mock_pm
+        try:
             with pytest.raises(RuntimeError, match="not found via plugin loader"):
                 _MnemosyneAdapter()
+        finally:
+            if old is not None:
+                sys.modules["plugins.memory"] = old
+            else:
+                sys.modules.pop("plugins.memory", None)
 
     def test_mnemosyne_adapter_import_error_fallback(self):
         """_MnemosyneAdapter falls back to standard import on ImportError."""
+        import sys
+        # Remove plugins.memory to trigger ImportError path
+        old = sys.modules.pop("plugins.memory", None)
         mock_delegate = mock.MagicMock()
         mock_delegate.name = "mnemosyne"
         mock_cls = mock.MagicMock(return_value=mock_delegate)
-        with mock.patch(
-            "plugins.memory.load_memory_provider",
-            side_effect=ImportError("no plugins.memory"),
-        ), mock.patch(
-            "multi_memory.adapters._try_import",
-            return_value=mock_cls,
-        ):
-            adapter = _MnemosyneAdapter()
+        try:
+            with mock.patch(
+                "multi_memory.adapters._try_import",
+                return_value=mock_cls,
+            ):
+                adapter = _MnemosyneAdapter()
+        finally:
+            if old is not None:
+                sys.modules["plugins.memory"] = old
         assert adapter._delegate is mock_delegate
 
     def test_mnemosyne_handle_tool_call_delegates(self):
         """_MnemosyneAdapter.handle_tool_call passes full name to delegate."""
+        import sys
         mock_delegate = mock.MagicMock()
         mock_delegate.name = "mnemosyne"
-        with mock.patch(
-            "plugins.memory.load_memory_provider",
-            return_value=mock_delegate,
-        ):
+        mock_pm = mock.MagicMock()
+        mock_pm.load_memory_provider.return_value = mock_delegate
+        old = sys.modules.get("plugins.memory")
+        sys.modules["plugins.memory"] = mock_pm
+        try:
             adapter = _MnemosyneAdapter()
+        finally:
+            if old is not None:
+                sys.modules["plugins.memory"] = old
+            else:
+                sys.modules.pop("plugins.memory", None)
         mock_delegate.handle_tool_call.return_value = '{"ok": true}'
         adapter.handle_tool_call("mnemosyne_recall", {"query": "test"})
         mock_delegate.handle_tool_call.assert_called_once_with(
@@ -1052,16 +1070,23 @@ class TestCoverageGaps:
 
     def test_mnemosyne_get_tool_schemas_returns_directly(self):
         """_MnemosyneAdapter.get_tool_schemas returns delegate schemas unchanged."""
+        import sys
         mock_delegate = mock.MagicMock()
         mock_delegate.name = "mnemosyne"
         mock_delegate.get_tool_schemas.return_value = [
             {"name": "mnemosyne_recall", "description": "Recall"},
         ]
-        with mock.patch(
-            "plugins.memory.load_memory_provider",
-            return_value=mock_delegate,
-        ):
+        mock_pm = mock.MagicMock()
+        mock_pm.load_memory_provider.return_value = mock_delegate
+        old = sys.modules.get("plugins.memory")
+        sys.modules["plugins.memory"] = mock_pm
+        try:
             adapter = _MnemosyneAdapter()
+        finally:
+            if old is not None:
+                sys.modules["plugins.memory"] = old
+            else:
+                sys.modules.pop("plugins.memory", None)
         schemas = adapter.get_tool_schemas()
         assert schemas == [{"name": "mnemosyne_recall", "description": "Recall"}]
 

@@ -36,6 +36,11 @@ jobs:
           python -m pip install --upgrade pip setuptools wheel
           pip install -e ".[all,test]"
 
-      - name: Run tests
+      - name: Lint (ruff)
         run: |
-          python -m pytest tests/ -v --tb=short
+          pip install ruff
+          ruff check src/ tests/
+
+      - name: Run tests with coverage
+        run: |
+          python -m pytest tests/ -v --tb=short --cov=multi_memory --cov-report=term-missing --cov-fail-under=90

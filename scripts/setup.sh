@@ -34,8 +34,8 @@ BACKEND_NAMES=(Mnemosyne Mem0 Holographic Honcho)
 declare -A BACKEND_KEY BACKEND_DEPS BACKEND_STDLIB BACKEND_MODULE
 
 BACKEND_KEY[Mnemosyne]="mnemosyne"
-BACKEND_DEPS[Mnemosyne]="stdlib-only (no pip)"
-BACKEND_STDLIB[Mnemosyne]="true"
+BACKEND_DEPS[Mnemosyne]="plugin (github.com/AxDSan/mnemosyne)"
+BACKEND_STDLIB[Mnemosyne]="plugin"
 BACKEND_MODULE[Mnemosyne]="mnemosyne"
 
 BACKEND_KEY[Mem0]="mem0"
@@ -62,8 +62,14 @@ PYTHON="$(command -v python3)"
 # ── detect backends ──────────────────────────────────────────
 detect_backend() {
     local label="$1" key="${BACKEND_KEY[$label]}" mod="${BACKEND_MODULE[$label]}" stdlib="${BACKEND_STDLIB[$label]}"
+    if [[ "$stdlib" == "plugin" ]]; then
+        # User-installed plugin — check if directory exists
+        local plugin_dir="$HERMES_HOME/plugins/$key"
+        [[ -d "$plugin_dir" && -f "$plugin_dir/__init__.py" ]]
+        return $?
+    fi
     if [[ "$stdlib" == "true" ]]; then
-        # stdlib-only backends (mnemosyne, holographic) are always available
+        # stdlib-only backends (holographic) are always available
         return 0
     fi
     # Check if the top-level module can be imported
@@ -74,7 +80,7 @@ detect_backend() {
 # ── main ─────────────────────────────────────────────────────
 echo ""
 echo "╔══════════════════════════════════════════════╗"
-echo "║   multi-memory plugin — setup wizard v0.2.0  ║"
+echo "║   multi-memory plugin — setup wizard v0.3.0  ║"
 echo "╚══════════════════════════════════════════════╝"
 echo ""
 info "Python: $("$PYTHON" --version 2>&1)"
@@ -203,7 +209,7 @@ home = os.environ.get('HERMES_HOME', os.path.expanduser('~/.hermes'))
 p = os.path.join(home, 'config.yaml')
 with open(p) as f:
     cfg = yaml.safe_load(f) or {}
-subs = _load_backends_from_config(cfg.get('memory', {}))
+subs = _load_backends_from_config(cfg)
 print(f'  Loaded {len(subs)} backend(s): {[s.name for s in subs]}')
 " 2>&1; then
     ok "Configuration is valid"

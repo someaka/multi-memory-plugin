@@ -37,7 +37,7 @@ done
 
 # ── main ─────────────────────────────────────────────────────
 echo ""
-info "multi-memory plugin installer v0.2.0"
+info "multi-memory plugin installer v0.3.0"
 echo ""
 
 # 1. Verify source exists

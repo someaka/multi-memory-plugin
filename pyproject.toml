@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name        = "multi-memory"
-version     = "0.2.0"
+version     = "0.3.0"
 description = "Standalone multi-destination MemoryProvider for Hermes Agent"
 requires-python = ">=3.10"
 dependencies = ["pyyaml>=6.0"]

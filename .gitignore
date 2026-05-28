@@ -25,3 +25,5 @@ Thumbs.db
 .pytest_cache/
 .coverage
 htmlcov/
+.coverage
+.ruff_cache/

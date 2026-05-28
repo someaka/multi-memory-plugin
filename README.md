@@ -1,119 +1,153 @@
-# Multi-Memory Plugin — Hermes Agent
+# multi-memory
 
-Run multiple memory providers (Mnemosyne, Mem0, Holographic, Honcho) simultaneously via a single `MemoryProvider` instance.
+> Run multiple [Hermes](https://github.com/NousResearch/hermes-agent) memory backends simultaneously through a single provider.
 
-## Install
+[![CI](https://github.com/someaka/multi-memory-plugin/actions/workflows/ci.yml/badge.svg)](https://github.com/someaka/multi-memory-plugin/actions/workflows/ci.yml)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-Copy the plugin into Hermes's plugin directory:
+---
+
+## What it does
+
+Hermes supports one memory provider at a time. This plugin lets you run **all of them at once** — Mnemosyne for local recall, Mem0 for semantic search, Holographic for vector embeddings, Honcho for hosted memory — without choosing just one.
+
+Tool calls route to the right backend automatically. Lifecycle hooks fan out to every active provider. Failures in one backend don't take down the others.
+
+## Quick start
+
+**1. Install** — copy or symlink into Hermes:
 
 ```bash
+# Option A: copy
 cp -r src/multi_memory ~/.hermes/hermes-agent/plugins/memory/multi/
-# or symlink:
-ln -sf $(pwd)/src/multi_memory ~/.hermes/hermes-agent/plugins/memory/multi/
+
+# Option B: symlink (stays in sync with the repo)
+ln -sf "$(pwd)/src/multi_memory" ~/.hermes/hermes-agent/plugins/memory/multi/
 ```
 
-## Configuration
-
-Either format works:
+**2. Configure** — add to `~/.hermes/config.yaml`:
 
 ```yaml
-# ~/.hermes/config.yaml
 memory:
   provider: multi
   multi:
     backends:
-      mnemosyne: {}              # stdlib-only; no pip install needed
-      mem0: {}                   # requires MEM0_API_KEY in env
-      holographic: {}            # stdlib-only
-      honcho: {}                 # requires honcho-ai package
+      mnemosyne: {}
+      holographic: {}
+      # mem0: {}       # uncomment if you have MEM0_API_KEY
+      # honcho: {}     # uncomment if you have honcho-ai installed
 ```
 
-Or the INVESTIGATION-C canonical format:
+**3. Restart** Hermes. That's it.
+
+## Backends
+
+| Backend | Setup | Env vars |
+|---------|-------|----------|
+| **Mnemosyne** | Install the [mnemosyne plugin](https://github.com/AxDSan/mnemosyne) to `~/.hermes/plugins/mnemosyne/` | — |
+| **Holographic** | None — stdlib only | — |
+| **Mem0** | `pip install mem0ai` | `MEM0_API_KEY` |
+| **Honcho** | `pip install honcho-ai` | `HONCHO_API_KEY`, `HONCHO_APP_ID` |
+
+Missing a backend? No problem — it's silently skipped. No crashes, no noise.
+
+## How routing works
+
+Each backend gets a tool-name prefix (`mnemosyne_`, `mem0_`, etc.). When the model calls `mnemosyne_recall`, the plugin routes it to Mnemosyne. When it calls `holographic_probe`, it goes to Holographic.
+
+All lifecycle hooks (`initialize`, `shutdown`, `prefetch`, `sync_turn`, etc.) fan out to every active sub-provider. Each call is isolated — if one backend throws, the others keep running.
+
+## Config formats
+
+Both of these are equivalent:
 
 ```yaml
+# Format 1: per-backend options
+memory:
+  provider: multi
+  multi:
+    backends:
+      mnemosyne: {}
+      holographic: {}
+
+# Format 2: concise list
 memory:
   provider: multi
   providers:
-    - "mnemosyne"
-    - "mem0"
-    - "holographic"
-    - "honcho"
+    - mnemosyne
+    - holographic
 ```
 
-## Per-backend dependencies
+Disable a backend by setting it to `false`:
 
-| Backend | pip install | Env vars required |
-|---------|------------|-------------------|
-| Mnemosyne | [plugin](https://github.com/AxDSan/mnemosyne) | None |
-| Mem0 | `mem0ai>=0.1` | `MEM0_API_KEY` |
-| Holographic | stdlib-only | None |
-| Honcho | `honcho-ai` | `HONCHO_API_KEY`, `HONCHO_APP_ID` |
-
-**Notes:**
-- Mnemosyne is a user-installed plugin (deployed to `~/.hermes/plugins/mnemosyne/`).
-  The adapter uses the Hermes plugin loader to find it.
-- Mem0 and Honcho tools are self-prefixed by their providers — the adapter
-  strips and re-adds the prefix to avoid double-prefixing (`mem0_mem0_search`).
-- If a backend is not installed, the adapter raises at init time and the loader
-  in `_load_backends_from_config` catches the error and skips it — no crash,
-  just a debug log.
-
-## How it works
-
-```
-Hermes core → MemoryManager._tool_to_provider["mnemosyne_recall"]
-           → MultiMemoryProvider.handle_tool_call("mnemosyne_recall", args)
-           → prefix match: "mnemosyne_" → routes to _MnemosyneAdapter
-           → _MnemosyneAdapter.handle_tool_call("mnemosyne_recall", args)
-           → real mnemosyne MemoryProvider.handle_tool_call("mnemosyne_recall", args)
+```yaml
+memory:
+  multi:
+    backends:
+      mnemosyne: {}
+      mem0: false      # disabled
 ```
 
-Each adapter handles prefix differently based on how the real provider names its tools:
-- **Mnemosyne**: tools are self-prefixed (`mnemosyne_recall`) — adapter passes through
-- **Mem0 / Honcho**: tools are self-prefixed (`mem0_search`) — adapter strips+re-adds
-- **Holographic**: tools are unprefixed (`fact_store`) — base class adds prefix
+See [CONFIG.md](CONFIG.md) for the full reference.
 
-All lifecycle hooks (`initialize`, `prefetch`, `sync_turn`, `shutdown`, etc.) fan out
-to every active sub-provider with per-provider error isolation (`try/except`).
+## Validation
 
-## Acceptance criteria
+```bash
+# Check which backends are detected
+python scripts/health_check.py --verbose
 
-- [x] `plugin.yaml`, `README.md`, `__init__.py`, `adapters.py` exist
-- [x] `MultiMemoryProvider` passes `isinstance(p, MemoryProvider)` = True
-- [x] 0 tool name collisions in `get_tool_schemas()` (first-seen wins)
-- [x] `handle_tool_call()` routes to correct sub-provider by prefix
-- [x] `initialize()` / `shutdown()` propagate to all active sub-providers
-- [x] Unit tests pass (`python -m pytest tests/ -v`)
+# Run with JSON output
+python scripts/health_check.py --json
+```
 
-## File structure
+## Testing
+
+```bash
+# Install test deps
+pip install -e ".[all,test]"
+
+# Run the suite
+python -m pytest tests/ -v
+
+# With coverage
+python -m pytest tests/ --cov=src/multi_memory --cov-report=term-missing
+```
+
+## Development
+
+```bash
+# Lint
+ruff check src/ tests/
+
+# Auto-fix
+ruff check src/ tests/ --fix
+
+# Full check (lint + tests + coverage)
+make test && ruff check src/ tests/
+```
+
+## Project structure
 
 ```
-multi-memory-plugin/
-├── plugin.yaml                  → Hermes plugin metadata
-├── pyproject.toml               → Build config
-├── setup.cfg                    → flake8 + pytest config
-├── Makefile                     → install, test, lint, coverage targets
-├── README.md                    → This file
-├── CONFIG.md                    → Full configuration reference
-├── CHANGELOG.md                 → Version history
-├── src/
-│   └── multi_memory/
-│       ├── __init__.py          → register() + MultiMemoryProvider
-│       ├── adapters.py          → 4 sub-provider adapters
-│       ├── budget.py            → ToolBudgetWarning (schema count monitor)
-│       ├── config.py            → Config loader helpers
-│       ├── discovery.py         → Backend discovery + install detection
-│       ├── health.py            → HealthTracker + circuit breaker
-│       └── validate.py          → NamespaceValidator (PREFIX checks)
-├── tests/
-│   ├── conftest.py              → Shared fixtures + markers
-│   ├── test_adapters.py         → Adapters, provider, lifecycle hooks
-│   ├── test_budget.py           → Budget + namespace validator
-│   ├── test_config.py           → Config loading + normalization
-│   ├── test_discovery.py        → Backend discovery
-│   └── test_health.py           → HealthTracker + timeout_wrapper
-└── scripts/
-    ├── health_check.py          → CLI health check (--json, --verbose)
-    ├── install.sh               → One-command installer (symlink + validate)
-    └── setup.sh                 → Interactive setup wizard
+src/multi_memory/
+├── __init__.py      # register() + MultiMemoryProvider
+├── adapters.py      # 4 sub-provider adapters with prefix routing
+├── budget.py        # ToolBudgetWarning — schema count monitor
+├── config.py        # Config loader helpers
+├── discovery.py     # Backend discovery + install detection
+├── health.py        # HealthTracker + circuit breaker
+└── validate.py      # NamespaceValidator — prefix collision checks
 ```
+
+## Contributing
+
+1. Fork the repo
+2. Create a feature branch
+3. Make your changes (tests required)
+4. Run `ruff check src/ tests/ && python -m pytest tests/ -q`
+5. Open a PR
+
+## License
+
+MIT

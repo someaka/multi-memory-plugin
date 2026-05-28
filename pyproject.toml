@@ -7,6 +7,7 @@ name        = "multi-memory"
 version     = "0.3.0"
 description = "Standalone multi-destination MemoryProvider for Hermes Agent"
 requires-python = ">=3.10"
+license = "AGPL-3.0-or-later"
 dependencies = ["pyyaml>=6.0"]
 
 [project.optional-dependencies]

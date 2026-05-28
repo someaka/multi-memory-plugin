@@ -983,3 +983,136 @@ class TestHolographicAdapterLifecycle:
 
     def test_name_property(self, adapter):
         assert adapter.name == "holographic"
+
+
+# ── Coverage gap tests ───────────────────────────────────────────────────
+
+
+class TestCoverageGaps:
+    """Tests targeting specific uncovered lines."""
+
+    def test_try_import_find_spec_module_not_found(self):
+        """_try_import returns None when find_spec raises ModuleNotFoundError."""
+        with mock.patch(
+            "multi_memory.adapters.find_spec",
+            side_effect=ModuleNotFoundError("no parent"),
+        ):
+            from multi_memory.adapters import _try_import
+            result = _try_import("some.module", "SomeClass")
+        assert result is None
+
+    def test_try_import_find_spec_value_error(self):
+        """_try_import returns None when find_spec raises ValueError."""
+        with mock.patch(
+            "multi_memory.adapters.find_spec",
+            side_effect= ValueError("invalid name"),
+        ):
+            from multi_memory.adapters import _try_import
+            result = _try_import("bad name!", "SomeClass")
+        assert result is None
+
+    def test_mnemosyne_adapter_plugin_loader_returns_none(self):
+        """_MnemosyneAdapter raises RuntimeError when plugin loader returns None."""
+        with mock.patch(
+            "plugins.memory.load_memory_provider",
+            return_value=None,
+        ):
+            with pytest.raises(RuntimeError, match="not found via plugin loader"):
+                _MnemosyneAdapter()
+
+    def test_mnemosyne_adapter_import_error_fallback(self):
+        """_MnemosyneAdapter falls back to standard import on ImportError."""
+        mock_delegate = mock.MagicMock()
+        mock_delegate.name = "mnemosyne"
+        mock_cls = mock.MagicMock(return_value=mock_delegate)
+        with mock.patch(
+            "plugins.memory.load_memory_provider",
+            side_effect=ImportError("no plugins.memory"),
+        ), mock.patch(
+            "multi_memory.adapters._try_import",
+            return_value=mock_cls,
+        ):
+            adapter = _MnemosyneAdapter()
+        assert adapter._delegate is mock_delegate
+
+    def test_mnemosyne_handle_tool_call_delegates(self):
+        """_MnemosyneAdapter.handle_tool_call passes full name to delegate."""
+        mock_delegate = mock.MagicMock()
+        mock_delegate.name = "mnemosyne"
+        with mock.patch(
+            "plugins.memory.load_memory_provider",
+            return_value=mock_delegate,
+        ):
+            adapter = _MnemosyneAdapter()
+        mock_delegate.handle_tool_call.return_value = '{"ok": true}'
+        adapter.handle_tool_call("mnemosyne_recall", {"query": "test"})
+        mock_delegate.handle_tool_call.assert_called_once_with(
+            "mnemosyne_recall", {"query": "test"}
+        )
+
+    def test_mnemosyne_get_tool_schemas_returns_directly(self):
+        """_MnemosyneAdapter.get_tool_schemas returns delegate schemas unchanged."""
+        mock_delegate = mock.MagicMock()
+        mock_delegate.name = "mnemosyne"
+        mock_delegate.get_tool_schemas.return_value = [
+            {"name": "mnemosyne_recall", "description": "Recall"},
+        ]
+        with mock.patch(
+            "plugins.memory.load_memory_provider",
+            return_value=mock_delegate,
+        ):
+            adapter = _MnemosyneAdapter()
+        schemas = adapter.get_tool_schemas()
+        assert schemas == [{"name": "mnemosyne_recall", "description": "Recall"}]
+
+    def test_mem0_adapter_handle_delegates(self):
+        """_Mem0Adapter.handle_tool_call passes full name (no strip)."""
+        mock_delegate = mock.MagicMock()
+        mock_delegate.name = "mem0"
+        mock_cls = mock.MagicMock(return_value=mock_delegate)
+        with mock.patch("multi_memory.adapters._try_import", return_value=mock_cls):
+            adapter = _Mem0Adapter()
+        mock_delegate.handle_tool_call.return_value = '{"ok": true}'
+        adapter.handle_tool_call("mem0_search", {"query": "test"})
+        mock_delegate.handle_tool_call.assert_called_once_with(
+            "mem0_search", {"query": "test"}
+        )
+
+    def test_honcho_adapter_handle_delegates(self):
+        """_HonchoAdapter.handle_tool_call passes full name (no strip)."""
+        mock_delegate = mock.MagicMock()
+        mock_delegate.name = "honcho"
+        mock_cls = mock.MagicMock(return_value=mock_delegate)
+        with mock.patch("multi_memory.adapters._try_import", return_value=mock_cls):
+            adapter = _HonchoAdapter()
+        mock_delegate.handle_tool_call.return_value = '{"ok": true}'
+        adapter.handle_tool_call("honcho_search", {"query": "test"})
+        mock_delegate.handle_tool_call.assert_called_once_with(
+            "honcho_search", {"query": "test"}
+        )
+
+    def test_load_backends_init_exception_is_logged(self):
+        """When adapter.__init__ raises, it's caught and logged."""
+        mock_cls = mock.MagicMock()
+        mock_cls.side_effect = RuntimeError("init boom")
+        mock_cls.CONFIG_KEY = "broken"
+        with mock.patch("multi_memory._SUB_CLASSES", (mock_cls,)):
+            cfg = {"memory": {"multi": {"backends": {"broken": {}}}}}
+            result = _load_backends_from_config(cfg)
+        assert result == []
+
+    def test_discovery_find_spec_exception_handled(self):
+        """discover_backends catches ModuleNotFoundError from find_spec."""
+        from multi_memory.discovery import discover_backends
+        with mock.patch(
+            "multi_memory.discovery._is_mnemosyne_plugin_installed",
+            return_value=False,
+        ), mock.patch(
+            "multi_memory.discovery.find_spec",
+            side_effect=ModuleNotFoundError("no parent"),
+        ):
+            results = discover_backends()
+        # All non-mnemosyne backends should show as not installed
+        for r in results:
+            if r["config_key"] != "mnemosyne":
+                assert r["installed"] is False

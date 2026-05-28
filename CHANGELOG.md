@@ -54,11 +54,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   since Mem0 dispatches on full names internally.
 - `_HonchoAdapter`: same double-prefix fix as Mem0 — strips then re-adds prefix.
 - `_HonchoAdapter`: `handle_tool_call` passes full prefixed names.
+- `discovery.py`: Mnemosyne detection uses plugin loader check instead of
+  `find_spec("mnemosyne")` which found the pip MCP server.
+- `health_check.py`: Mnemosyne detection uses plugin loader; Mem0 env check
+  also reads `~/.hermes/mem0.json` for API key.
 
 ### Tests
-- **178 tests** (up from 173), all passing.
+- **184 tests** (up from 183), all passing.
 - Added `TestNoDoublePrefix` (5 tests): verifies Mem0, Honcho, Holographic,
   and Mnemosyne adapters produce correctly prefixed tool names without duplication.
+- Updated `test_discovery.py`: all tests use mock-based plugin loader checks
+  instead of `find_spec("mnemosyne")`.
+- Removed unused `pytest` import from `test_discovery.py`.
+
+### Docs
+- README.md: updated "How it works" diagram to show correct prefix handling.
+- README.md: added notes about per-adapter prefix strategies.
+- CONFIG.md: updated Mnemosyne and Mem0 backend descriptions.
 
 ## [0.2.1] — 2026-05-28
 

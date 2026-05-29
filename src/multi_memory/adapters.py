@@ -33,7 +33,11 @@ def _try_import(module: str, cls: str) -> type | None:
     try:
         mod = importlib.import_module(module)
         return getattr(mod, cls, None)
-    except Exception:
+    except Exception as exc:
+        logger.debug(
+            "[multi-memory] _try_import(%s.%s) failed: %s",
+            module, cls, exc,
+        )
         return None
 
 

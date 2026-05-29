@@ -215,8 +215,9 @@ class MultiMemoryProvider(MemoryProvider):
                 r = sub.prefetch(query, session_id=session_id)
                 if r:
                     parts.append(f"[{sub.name}] {r}")
-            except Exception:
-                logger.debug("multi-memory prefetch %s (ignored)", sub.name, exc_info=False)
+            except Exception as exc:
+                self._health.record_failure(sub.name)
+                logger.debug("[multi-memory] prefetch %s: %s", sub.name, exc)
         return "\n\n".join(parts)
 
     def queue_prefetch(self, query: str, *, session_id: str = "") -> None:

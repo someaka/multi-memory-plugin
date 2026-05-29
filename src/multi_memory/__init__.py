@@ -353,8 +353,17 @@ def _load_backends_from_config(config: dict) -> list[_SubProviderAdapter]:
                     adapter = cls()
                     if adapter.is_available():
                         backends.append(adapter)
+                    else:
+                        logger.warning(
+                            "[multi-memory] %s installed but not available "
+                            "(missing credentials or config?)",
+                            key,
+                        )
                 except Exception as exc:
-                    logger.debug("[multi-memory] %s unavailable (%s)", key, exc)
+                    logger.warning(
+                        "[multi-memory] %s listed in config but failed to load: %s",
+                        key, exc,
+                    )
                 break
         else:
             logger.warning("[multi-memory] unknown backend '%s'  skipping", key)

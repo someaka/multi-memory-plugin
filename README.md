@@ -27,7 +27,9 @@ active provider. One backend crashing won't take down the rest.
 | **[ByteRover](https://byterover.dev)** | CLI-first local knowledge tree | `npm install -g byterover-cli` | — |
 | **[Supermemory](https://supermemory.ai)** | Semantic long-term graph memory | `pip install supermemory` | `SUPERMEMORY_API_KEY` |
 
-Backends you haven't installed are silently skipped — no crashes, no config errors.
+Backends you haven't installed are skipped with a **warning in the logs** telling
+you exactly why — missing package, missing API key, or failed import. Nothing
+disappears silently.
 
 ---
 
@@ -76,7 +78,8 @@ to the matching backend by prefix. First-match wins.
 
 **Lifecycle fanout** — `initialize`, `shutdown`, `prefetch`, `sync_turn`,
 `on_session_end`, and every other hook fires on all active backends.
-Errors are isolated — one backend failing doesn't block the others.
+Errors are isolated — one backend failing doesn't block the others — but
+every failure is logged at WARNING level with the backend name and exception.
 
 **Circuit breaker** — after 3 consecutive failures a backend is skipped
 until it recovers. Every error is logged with the backend name and

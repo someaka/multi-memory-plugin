@@ -1,164 +1,191 @@
 # multi-memory
 
-> Run multiple [Hermes](https://github.com/NousResearch/hermes-agent) memory backends simultaneously through a single provider.
+> Run every [Hermes](https://github.com/NousResearch/hermes-agent) memory backend at once — through a single provider.
 
 [![CI](https://github.com/someaka/multi-memory-plugin/actions/workflows/ci.yml/badge.svg)](https://github.com/someaka/multi-memory-plugin/actions/workflows/ci.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPL%20v3-blue.svg)](LICENSE)
 
+Hermes only activates one memory provider at a time. This plugin changes that —
+drop it in, list the backends you want, and they all run together. Tool calls
+route to the right backend automatically. Lifecycle hooks fan out to every
+active provider. One backend crashing won't take down the rest.
+
 ---
 
-## What it does
+## Supported backends
 
-Hermes supports one memory provider at a time. This plugin lets you run **all of them at once** — Mnemosyne for local recall, Mem0 for semantic search, Holographic for vector embeddings, Honcho for hosted memory, OpenViking for context databases, Hindsight for knowledge graphs, RetainDB for cloud memory, ByteRover for CLI-first memory, Supermemory for semantic long-term memory — without choosing just one.
+| Backend | What it is | Install | Env vars |
+|:--------|:-----------|:--------|:---------|
+| **[Mnemosyne](https://github.com/AxDSan/mnemosyne)** | Local SQLite + vector recall | Plugin at `~/.hermes/plugins/mnemosyne/` | — |
+| **Holographic** | SQLite fact store + FTS5 + HRR algebra | Built-in (stdlib) | — |
+| **[Mem0](https://mem0.ai)** | Cloud semantic search + auto-extraction | `pip install mem0ai` | `MEM0_API_KEY` |
+| **[Honcho](https://app.honcho.dev)** | Hosted cross-session user modeling | `pip install honcho-ai` | `HONCHO_API_KEY` `HONCHO_APP_ID` |
+| **[OpenViking](https://github.com/volcengine/OpenViking)** | Context DB + filesystem hierarchy | `pip install openviking` + server | `OPENVIKING_ENDPOINT` |
+| **[Hindsight](https://hindsight.vectorize.io)** | Knowledge graph + entity resolution | `pip install hindsight-client` | `HINDSIGHT_API_KEY` |
+| **[RetainDB](https://retaindb.com)** | Cloud hybrid search + delta compression | — (urllib) | `RETAINDB_API_KEY` |
+| **[ByteRover](https://byterover.dev)** | CLI-first local knowledge tree | `npm install -g byterover-cli` | — |
+| **[Supermemory](https://supermemory.ai)** | Semantic long-term graph memory | `pip install supermemory` | `SUPERMEMORY_API_KEY` |
 
-Tool calls route to the right backend automatically. Lifecycle hooks fan out to every active provider. Failures in one backend don't take down the others. A circuit breaker (HealthTracker) skips backends that fail repeatedly.
+Backends you haven't installed are silently skipped — no crashes, no config errors.
+
+---
 
 ## Quick start
 
-**1. Install** — copy or symlink into Hermes:
-
 ```bash
-# Option A: copy
-cp -r src/multi_memory ~/.hermes/hermes-agent/plugins/memory/multi/
-
-# Option B: symlink (stays in sync with the repo)
+# 1. Install (symlink keeps it in sync with the repo)
 ln -sf "$(pwd)/src/multi_memory" ~/.hermes/hermes-agent/plugins/memory/multi/
-```
 
-**2. Configure** — add to `~/.hermes/config.yaml`:
-
-```yaml
+# 2. Configure — add to ~/.hermes/config.yaml
+cat >> ~/.hermes/config.yaml << 'EOF'
 memory:
   provider: multi
   multi:
     backends:
       mnemosyne: {}
       holographic: {}
-      # mem0: {}          # uncomment if you have MEM0_API_KEY
-      # honcho: {}        # uncomment if you have honcho-ai installed
-      # openviking: {}    # uncomment if you have openviking installed
-      # hindsight: {}     # uncomment if you have HINDSIGHT_API_KEY
-      # retaindb: {}      # uncomment if you have RETAINDB_API_KEY
-      # byterover: {}     # uncomment if you have brv CLI installed
-      # supermemory: {}   # uncomment if you have SUPERMEMORY_API_KEY
+EOF
+
+# 3. Restart Hermes. Done.
 ```
 
-**3. Restart** Hermes. That's it.
+Uncomment the backends you want in the config. Each backend needs its own
+setup — see the table above for install commands and env vars.
 
-## Backends
+---
 
-| Backend | Setup | Env vars |
-|---------|-------|----------|
-| **Mnemosyne** | Install the [mnemosyne plugin](https://github.com/AxDSan/mnemosyne) to `~/.hermes/plugins/mnemosyne/` | — |
-| **Holographic** | None — stdlib only | — |
-| **Mem0** | `pip install mem0ai` | `MEM0_API_KEY` |
-| **Honcho** | `pip install honcho-ai` | `HONCHO_API_KEY`, `HONCHO_APP_ID` |
-| **OpenViking** | `pip install openviking` + running server | `OPENVIKING_ENDPOINT` |
-| **Hindsight** | `pip install hindsight-client` | `HINDSIGHT_API_KEY` |
-| **RetainDB** | `pip install retaindb` | `RETAINDB_API_KEY` |
-| **ByteRover** | `npm install -g byterover-cli` | — |
-| **Supermemory** | `pip install supermemory` | `SUPERMEMORY_API_KEY` |
+## How it works
 
-Missing a backend? No problem — it's silently skipped. No crashes, no noise.
+```
+Model calls: mnemosyne_recall(...)  ──┐
+Model calls: viking_search(...)     ──┤
+Model calls: brv_query(...)         ──┼──▶  MultiMemoryProvider
+Model calls: supermemory_store(...) ──┤         │
+                                      │    ┌────┴────┐
+                                      │    ▼         ▼
+                                      │ Mnemosyne  OpenViking  ...
+                                      │    │         │
+                                      │    ▼         ▼
+                                      │  SQLite    Viking DB
+```
 
-## How routing works
+**Tool routing** — each backend has a prefix (`mnemosyne_`, `mem0_`,
+`viking_`, `brv_`, `hindsight_`, etc.). The model's tool call is routed
+to the matching backend by prefix. First-match wins.
 
-Each backend gets a tool-name prefix (`mnemosyne_`, `mem0_`, `viking_`, `brv_`, etc.). When the model calls `mnemosyne_recall`, the plugin routes it to Mnemosyne. When it calls `viking_search`, it goes to OpenViking.
+**Lifecycle fanout** — `initialize`, `shutdown`, `prefetch`, `sync_turn`,
+`on_session_end`, and every other hook fires on all active backends.
+Errors are isolated — one backend failing doesn't block the others.
 
-Note: ByteRover uses `brv_` as its tool prefix (not `byterover_`), and OpenViking uses `viking_` (not `openviking_`). The config key and tool prefix can differ.
+**Circuit breaker** — after 3 consecutive failures a backend is skipped
+until it recovers. Every error is logged with the backend name and
+exception details. No silent failures.
 
-All lifecycle hooks (`initialize`, `shutdown`, `prefetch`, `sync_turn`, etc.) fan out to every active sub-provider. Each call is isolated — if one backend throws, the others keep running. A circuit breaker skips backends that fail 3+ times consecutively.
+---
 
-## Config formats
+## Configuration
 
-Both of these are equivalent:
+Both formats are equivalent — use whichever you prefer:
 
 ```yaml
-# Format 1: per-backend options
+# Verbose (per-backend options — future-proof)
 memory:
   provider: multi
   multi:
     backends:
       mnemosyne: {}
+      mem0: {}
       holographic: {}
+      honcho: {}
 
-# Format 2: concise list
+# Concise (list of names)
 memory:
   provider: multi
   providers:
-    - "mnemosyne"
-    - "holographic"
+    - mnemosyne
+    - mem0
+    - holographic
+    - honcho
 ```
 
-Disable a backend by setting it to `false`:
+Disable a backend without removing it:
 
 ```yaml
 memory:
   multi:
     backends:
       mnemosyne: {}
-      mem0: false      # disabled
+      mem0: false        # disabled
+      holographic: {}
 ```
 
-See [CONFIG.md](CONFIG.md) for the full reference.
+Values that disable: `false`, `"false"`, `"False"`, `"0"`, `0`, `null`, `~`.
+Everything else (including `{}` and `true`) means enabled.
 
-## Validation
+See **[CONFIG.md](CONFIG.md)** for the full per-backend reference.
+
+---
+
+## Health check
 
 ```bash
-# Check which backends are detected
+# Which backends are detected on this system?
 python scripts/health_check.py --verbose
 
-# Run with JSON output
+# Machine-readable output
 python scripts/health_check.py --json
 ```
 
-## Testing
-
-```bash
-# Install test deps
-pip install -e ".[all,test]"
-
-# Run the suite
-python -m pytest tests/ -v
-
-# With coverage
-python -m pytest tests/ --cov=multi_memory --cov-report=term-missing
-```
+---
 
 ## Development
 
 ```bash
+# Install with all backends + test deps
+pip install -e ".[all,test]"
+
+# Run the test suite
+python -m pytest tests/ -v
+
 # Lint
 ruff check src/ tests/
 
 # Auto-fix
 ruff check src/ tests/ --fix
 
-# Full check (lint + tests + coverage)
+# Coverage
+python -m pytest tests/ --cov=multi_memory --cov-report=term-missing
+
+# Full pipeline
 make test && ruff check src/ tests/
 ```
+
+---
 
 ## Project structure
 
 ```
 src/multi_memory/
-├── __init__.py      # register() + MultiMemoryProvider (9 sub-providers)
-├── adapters.py      # 9 sub-provider adapters with prefix routing
-├── budget.py        # ToolBudgetWarning — schema count monitor
-├── config.py        # Config loader helpers
-├── discovery.py     # Backend discovery + install detection
-├── health.py        # HealthTracker + circuit breaker
-└── validate.py      # NamespaceValidator — prefix collision checks
+├── __init__.py      # register() + MultiMemoryProvider — the orchestrator
+├── adapters.py      # 9 adapter classes — one per backend, prefix routing
+├── budget.py        # ToolBudgetWarning — warns when schema count gets high
+├── config.py        # load_multi_config(), get_enabled_backends()
+├── discovery.py     # discover_backends() — probe what's installed
+├── health.py        # HealthTracker + circuit breaker + timeout wrapper
+├── validate.py      # NamespaceValidator — catches prefix collisions
+└── py.typed         # PEP 561 marker
 ```
+
+---
 
 ## Contributing
 
-1. Fork the repo
-2. Create a feature branch
-3. Make your changes (tests required)
-4. Run `ruff check src/ tests/ && python -m pytest tests/ -q`
-5. Open a PR
+1. Fork → feature branch
+2. `ruff check src/ tests/ && python -m pytest tests/ -q`
+3. Open a PR — tests required for new backends
+
+---
 
 ## License
 

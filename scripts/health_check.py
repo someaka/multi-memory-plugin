@@ -61,6 +61,41 @@ BACKENDS: dict[str, BackendDef] = {
         "env_vars": ["HONCHO_API_KEY", "HONCHO_APP_ID"],
         "config_key": "honcho",
     },
+    "openviking": {
+        "module": "plugins.memory.openviking",
+        "class": "OpenVikingMemoryProvider",
+        "pip": "openviking",
+        "env_vars": ["OPENVIKING_ENDPOINT"],
+        "config_key": "openviking",
+    },
+    "hindsight": {
+        "module": "plugins.memory.hindsight",
+        "class": "HindsightMemoryProvider",
+        "pip": "hindsight-client",
+        "env_vars": ["HINDSIGHT_API_KEY"],
+        "config_key": "hindsight",
+    },
+    "retaindb": {
+        "module": "plugins.memory.retaindb",
+        "class": "RetainDBMemoryProvider",
+        "pip": "retaindb",
+        "env_vars": ["RETAINDB_API_KEY"],
+        "config_key": "retaindb",
+    },
+    "byterover": {
+        "module": "plugins.memory.byterover",
+        "class": "ByteRoverMemoryProvider",
+        "pip": "byterover-cli (npm install -g byterover-cli)",
+        "env_vars": [],
+        "config_key": "byterover",
+    },
+    "supermemory": {
+        "module": "plugins.memory.supermemory",
+        "class": "SupermemoryMemoryProvider",
+        "pip": "supermemory",
+        "env_vars": ["SUPERMEMORY_API_KEY"],
+        "config_key": "supermemory",
+    },
 }
 
 

@@ -1,5 +1,6 @@
 """Multi-memory plugin for Hermes Agent — fan out lifecycle calls to
-multiple memory providers (Mnemosyne, Mem0, Holographic, Honcho).
+multiple memory providers (Mnemosyne, Mem0, Holographic, Honcho,
+OpenViking, Hindsight, RetainDB, ByteRover, Supermemory).
 
 Usage
 -----
@@ -10,14 +11,17 @@ Enable in config.yaml::
       multi:
         backends:
           mnemosyne: {}
-          mem0: {}
+          holographic: {}
+          openviking: {}
+          hindsight: {}
 
 Or use the INVESTIGATION-C canonical::
 
     memory:
       providers:
         - "mnemosyne"
-        - "mem0"
+        - "holographic"
+        - "openviking"
 """
 from __future__ import annotations
 
@@ -67,6 +71,11 @@ from .adapters import (
     _Mem0Adapter,
     _HolographicAdapter,
     _HonchoAdapter,
+    _OpenVikingAdapter,
+    _HindsightAdapter,
+    _RetainDBAdapter,
+    _ByteRoverAdapter,
+    _SupermemoryAdapter,
 )
 from .budget import ToolBudgetWarning
 from .validate import NamespaceValidator
@@ -79,7 +88,17 @@ __all__ = [
 
 logger = logging.getLogger(__name__)
 
-_SUB_CLASSES = _MnemosyneAdapter, _Mem0Adapter, _HolographicAdapter, _HonchoAdapter
+_SUB_CLASSES = (
+    _MnemosyneAdapter,
+    _Mem0Adapter,
+    _HolographicAdapter,
+    _HonchoAdapter,
+    _OpenVikingAdapter,
+    _HindsightAdapter,
+    _RetainDBAdapter,
+    _ByteRoverAdapter,
+    _SupermemoryAdapter,
+)
 
 
 def register(ctx) -> None:
@@ -157,17 +176,21 @@ class MultiMemoryProvider(MemoryProvider):
         return schemas
 
     def handle_tool_call(self, tool_name: str, args: dict, **kwargs: Any) -> str:
-        # Pass prefixed tool_name to sub — sub handles its own PREFIX stripping
+        # Match by adapter PREFIX (not sub.name) — handles cases where
+        # the config key differs from the tool prefix (e.g. ByteRover: brv_).
         for sub in self._subs:
-            pfx = f"{sub.name}_"
-            if tool_name.startswith(pfx):
+            pfx = getattr(type(sub), 'PREFIX', '') or sub.name
+            if tool_name.startswith(f"{pfx}_"):
                 return sub.handle_tool_call(tool_name, args, **kwargs)
         # Fallback: try all subs without prefix match
         for sub in self._subs:
             try:
                 return sub.handle_tool_call(tool_name, args, **kwargs)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug(
+                    "[multi-memory] fallback %s for '%s': %s",
+                    sub.name, tool_name, exc,
+                )
         return tool_error(f"No sub-provider handles tool '{tool_name}'")
 
     # ─── Optional hooks (pass-through to all active subs) ──
@@ -198,62 +221,94 @@ class MultiMemoryProvider(MemoryProvider):
 
     def queue_prefetch(self, query: str, *, session_id: str = "") -> None:
         for sub in self._subs:
+            if self._health.is_open(sub.name):
+                continue
             try:
                 sub.queue_prefetch(query, session_id=session_id)
-            except Exception:
-                pass  # non-fatal
+                self._health.record_success(sub.name)
+            except Exception as exc:
+                self._health.record_failure(sub.name)
+                logger.debug("[multi-memory] queue_prefetch %s: %s", sub.name, exc)
 
     def sync_turn(self, user_content: str, assistant_content: str, *, session_id: str = "") -> None:
         for sub in self._subs:
+            if self._health.is_open(sub.name):
+                continue
             try:
                 sub.sync_turn(user_content, assistant_content, session_id=session_id)
-            except Exception:
-                pass  # non-fatal
+                self._health.record_success(sub.name)
+            except Exception as exc:
+                self._health.record_failure(sub.name)
+                logger.debug("[multi-memory] sync_turn %s: %s", sub.name, exc)
 
     def on_turn_start(self, turn_number: int = 0, message: str = "", **kwargs: Any) -> None:
         for sub in self._subs:
+            if self._health.is_open(sub.name):
+                continue
             try:
                 sub.on_turn_start(turn_number, message, **kwargs)
-            except Exception:
-                pass
+                self._health.record_success(sub.name)
+            except Exception as exc:
+                self._health.record_failure(sub.name)
+                logger.debug("[multi-memory] on_turn_start %s: %s", sub.name, exc)
 
     def on_session_end(self, messages: list[dict]) -> None:
         for sub in self._subs:
+            if self._health.is_open(sub.name):
+                continue
             try:
                 sub.on_session_end(messages)
-            except Exception:
-                pass
+                self._health.record_success(sub.name)
+            except Exception as exc:
+                self._health.record_failure(sub.name)
+                logger.debug("[multi-memory] on_session_end %s: %s", sub.name, exc)
 
     def on_session_switch(self, new_session_id: str = "", *, parent_session_id: str = "", reset: bool = False, **kwargs: Any) -> None:
         for sub in self._subs:
+            if self._health.is_open(sub.name):
+                continue
             try:
                 sub.on_session_switch(new_session_id, parent_session_id=parent_session_id, reset=reset, **kwargs)
-            except Exception:
-                pass
+                self._health.record_success(sub.name)
+            except Exception as exc:
+                self._health.record_failure(sub.name)
+                logger.debug("[multi-memory] on_session_switch %s: %s", sub.name, exc)
 
     def on_memory_write(self, action: str, target: str, content: str, metadata: dict[str, Any] | None = None) -> None:
         for sub in self._subs:
+            if self._health.is_open(sub.name):
+                continue
             try:
                 sub.on_memory_write(action, target, content, metadata)
-            except Exception:
-                pass
+                self._health.record_success(sub.name)
+            except Exception as exc:
+                self._health.record_failure(sub.name)
+                logger.debug("[multi-memory] on_memory_write %s: %s", sub.name, exc)
 
     def on_delegation(self, task: str = "", result: str = "", *, child_session_id: str = "", **kwargs: Any) -> None:
         for sub in self._subs:
+            if self._health.is_open(sub.name):
+                continue
             try:
                 sub.on_delegation(task, result, child_session_id=child_session_id, **kwargs)
-            except Exception:
-                pass
+                self._health.record_success(sub.name)
+            except Exception as exc:
+                self._health.record_failure(sub.name)
+                logger.debug("[multi-memory] on_delegation %s: %s", sub.name, exc)
 
     def on_pre_compress(self, messages: list[dict[str, Any]]) -> str:
         parts = []
         for sub in self._subs:
+            if self._health.is_open(sub.name):
+                continue
             try:
                 r = sub.on_pre_compress(messages)
                 if r:
                     parts.append(f"[{sub.name}] {r}")
-            except Exception:
-                pass
+                self._health.record_success(sub.name)
+            except Exception as exc:
+                self._health.record_failure(sub.name)
+                logger.debug("[multi-memory] on_pre_compress %s: %s", sub.name, exc)
         return "\n\n".join(parts) if parts else ""
 
 

@@ -19,6 +19,11 @@ from multi_memory.adapters import (
     _Mem0Adapter,
     _MnemosyneAdapter,
     _HonchoAdapter,
+    _OpenVikingAdapter,
+    _HindsightAdapter,
+    _RetainDBAdapter,
+    _ByteRoverAdapter,
+    _SupermemoryAdapter,
     _try_import,
 )
 
@@ -194,6 +199,36 @@ class TestSubProviderAdapter:
         assert adapter_cls.CONFIG_KEY == "honcho"
         assert adapter_cls.MODULE == "plugins.memory.honcho"
         assert adapter_cls.PREFIX == "honcho"
+
+    def test_openviking_adapter_properties(self):
+        adapter_cls = _OpenVikingAdapter
+        assert adapter_cls.CONFIG_KEY == "openviking"
+        assert adapter_cls.MODULE == "plugins.memory.openviking"
+        assert adapter_cls.PREFIX == "viking"
+
+    def test_hindsight_adapter_properties(self):
+        adapter_cls = _HindsightAdapter
+        assert adapter_cls.CONFIG_KEY == "hindsight"
+        assert adapter_cls.MODULE == "plugins.memory.hindsight"
+        assert adapter_cls.PREFIX == "hindsight"
+
+    def test_retaindb_adapter_properties(self):
+        adapter_cls = _RetainDBAdapter
+        assert adapter_cls.CONFIG_KEY == "retaindb"
+        assert adapter_cls.MODULE == "plugins.memory.retaindb"
+        assert adapter_cls.PREFIX == "retaindb"
+
+    def test_byterover_adapter_properties(self):
+        adapter_cls = _ByteRoverAdapter
+        assert adapter_cls.CONFIG_KEY == "byterover"
+        assert adapter_cls.MODULE == "plugins.memory.byterover"
+        assert adapter_cls.PREFIX == "brv"
+
+    def test_supermemory_adapter_properties(self):
+        adapter_cls = _SupermemoryAdapter
+        assert adapter_cls.CONFIG_KEY == "supermemory"
+        assert adapter_cls.MODULE == "plugins.memory.supermemory"
+        assert adapter_cls.PREFIX == "supermemory"
 
     def test_mnemosyne_name_override(self):
         """_MnemosyneAdapter.name returns 'mnemosyne' (hardcoded override)."""
@@ -1012,14 +1047,16 @@ class TestCoverageGaps:
         assert result is None
 
     def test_mnemosyne_adapter_plugin_loader_returns_none(self):
-        """_MnemosyneAdapter raises RuntimeError when plugin loader returns None."""
+        """_MnemosyneAdapter raises when plugin loader returns None."""
         import sys
         mock_pm = mock.MagicMock()
         mock_pm.load_memory_provider.return_value = None
         old = sys.modules.get("plugins.memory")
         sys.modules["plugins.memory"] = mock_pm
         try:
-            with pytest.raises(RuntimeError, match="not found via plugin loader"):
+            # When plugin loader returns None and standard import also fails,
+            # the exception from the fallback (RuntimeError) is what propagates.
+            with pytest.raises(RuntimeError, match="not installed"):
                 _MnemosyneAdapter()
         finally:
             if old is not None:
@@ -1030,11 +1067,14 @@ class TestCoverageGaps:
     def test_mnemosyne_adapter_import_error_fallback(self):
         """_MnemosyneAdapter falls back to standard import on ImportError."""
         import sys
-        # Remove plugins.memory to trigger ImportError path
-        old = sys.modules.pop("plugins.memory", None)
+        # Mock load_memory_provider to raise ImportError to trigger fallback
         mock_delegate = mock.MagicMock()
         mock_delegate.name = "mnemosyne"
         mock_cls = mock.MagicMock(return_value=mock_delegate)
+        mock_pm = mock.MagicMock()
+        mock_pm.load_memory_provider.side_effect = ImportError("no plugins.memory")
+        old = sys.modules.get("plugins.memory")
+        sys.modules["plugins.memory"] = mock_pm
         try:
             with mock.patch(
                 "multi_memory.adapters._try_import",
@@ -1044,6 +1084,8 @@ class TestCoverageGaps:
         finally:
             if old is not None:
                 sys.modules["plugins.memory"] = old
+            else:
+                sys.modules.pop("plugins.memory", None)
         assert adapter._delegate is mock_delegate
 
     def test_mnemosyne_handle_tool_call_delegates(self):

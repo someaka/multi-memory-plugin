@@ -10,9 +10,9 @@
 
 ## What it does
 
-Hermes supports one memory provider at a time. This plugin lets you run **all of them at once** — Mnemosyne for local recall, Mem0 for semantic search, Holographic for vector embeddings, Honcho for hosted memory — without choosing just one.
+Hermes supports one memory provider at a time. This plugin lets you run **all of them at once** — Mnemosyne for local recall, Mem0 for semantic search, Holographic for vector embeddings, Honcho for hosted memory, OpenViking for context databases, Hindsight for knowledge graphs, RetainDB for cloud memory, ByteRover for CLI-first memory, Supermemory for semantic long-term memory — without choosing just one.
 
-Tool calls route to the right backend automatically. Lifecycle hooks fan out to every active provider. Failures in one backend don't take down the others.
+Tool calls route to the right backend automatically. Lifecycle hooks fan out to every active provider. Failures in one backend don't take down the others. A circuit breaker (HealthTracker) skips backends that fail repeatedly.
 
 ## Quick start
 
@@ -35,8 +35,13 @@ memory:
     backends:
       mnemosyne: {}
       holographic: {}
-      # mem0: {}       # uncomment if you have MEM0_API_KEY
-      # honcho: {}     # uncomment if you have honcho-ai installed
+      # mem0: {}          # uncomment if you have MEM0_API_KEY
+      # honcho: {}        # uncomment if you have honcho-ai installed
+      # openviking: {}    # uncomment if you have openviking installed
+      # hindsight: {}     # uncomment if you have HINDSIGHT_API_KEY
+      # retaindb: {}      # uncomment if you have RETAINDB_API_KEY
+      # byterover: {}     # uncomment if you have brv CLI installed
+      # supermemory: {}   # uncomment if you have SUPERMEMORY_API_KEY
 ```
 
 **3. Restart** Hermes. That's it.
@@ -49,14 +54,21 @@ memory:
 | **Holographic** | None — stdlib only | — |
 | **Mem0** | `pip install mem0ai` | `MEM0_API_KEY` |
 | **Honcho** | `pip install honcho-ai` | `HONCHO_API_KEY`, `HONCHO_APP_ID` |
+| **OpenViking** | `pip install openviking` + running server | `OPENVIKING_ENDPOINT` |
+| **Hindsight** | `pip install hindsight-client` | `HINDSIGHT_API_KEY` |
+| **RetainDB** | `pip install retaindb` | `RETAINDB_API_KEY` |
+| **ByteRover** | `npm install -g byterover-cli` | — |
+| **Supermemory** | `pip install supermemory` | `SUPERMEMORY_API_KEY` |
 
 Missing a backend? No problem — it's silently skipped. No crashes, no noise.
 
 ## How routing works
 
-Each backend gets a tool-name prefix (`mnemosyne_`, `mem0_`, etc.). When the model calls `mnemosyne_recall`, the plugin routes it to Mnemosyne. When it calls `holographic_probe`, it goes to Holographic.
+Each backend gets a tool-name prefix (`mnemosyne_`, `mem0_`, `viking_`, `brv_`, etc.). When the model calls `mnemosyne_recall`, the plugin routes it to Mnemosyne. When it calls `viking_search`, it goes to OpenViking.
 
-All lifecycle hooks (`initialize`, `shutdown`, `prefetch`, `sync_turn`, etc.) fan out to every active sub-provider. Each call is isolated — if one backend throws, the others keep running.
+Note: ByteRover uses `brv_` as its tool prefix (not `byterover_`), and OpenViking uses `viking_` (not `openviking_`). The config key and tool prefix can differ.
+
+All lifecycle hooks (`initialize`, `shutdown`, `prefetch`, `sync_turn`, etc.) fan out to every active sub-provider. Each call is isolated — if one backend throws, the others keep running. A circuit breaker skips backends that fail 3+ times consecutively.
 
 ## Config formats
 
@@ -75,8 +87,8 @@ memory:
 memory:
   provider: multi
   providers:
-    - mnemosyne
-    - holographic
+    - "mnemosyne"
+    - "holographic"
 ```
 
 Disable a backend by setting it to `false`:
@@ -111,7 +123,7 @@ pip install -e ".[all,test]"
 python -m pytest tests/ -v
 
 # With coverage
-python -m pytest tests/ --cov=src/multi_memory --cov-report=term-missing
+python -m pytest tests/ --cov=multi_memory --cov-report=term-missing
 ```
 
 ## Development
@@ -131,8 +143,8 @@ make test && ruff check src/ tests/
 
 ```
 src/multi_memory/
-├── __init__.py      # register() + MultiMemoryProvider
-├── adapters.py      # 4 sub-provider adapters with prefix routing
+├── __init__.py      # register() + MultiMemoryProvider (9 sub-providers)
+├── adapters.py      # 9 sub-provider adapters with prefix routing
 ├── budget.py        # ToolBudgetWarning — schema count monitor
 ├── config.py        # Config loader helpers
 ├── discovery.py     # Backend discovery + install detection

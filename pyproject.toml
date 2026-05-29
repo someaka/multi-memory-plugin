@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name        = "multi-memory"
-version     = "0.3.0"
+version     = "0.4.0"
 description = "Standalone multi-destination MemoryProvider for Hermes Agent"
 requires-python = ">=3.10"
 license = "AGPL-3.0-or-later"
@@ -14,9 +14,14 @@ dependencies = ["pyyaml>=6.0"]
 mem0        = ["mem0ai>=0.1"]
 holographic = []             # stdlib-only
 honcho      = ["honcho-ai"]
-mnemosyne   = []             # stdlib-only
-all         = ["multi-memory[mem0,holographic,honcho,mnemosyne]"]
-test        = ["pytest>=7", "pytest-cov>=4"]
+mnemosyne   = []             # stdlib-only (user-installed plugin)
+openviking  = ["openviking"]
+hindsight   = ["hindsight-client"]
+retaindb    = []             # uses urllib, no pip dep
+byterover   = []             # CLI tool (npm), not pip
+supermemory = ["supermemory"]
+all         = ["multi-memory[mem0,holographic,honcho,mnemosyne,openviking,hindsight,retaindb,byterover,supermemory]"]
+test        = ["pytest>=7", "pytest-cov>=4", "ruff"]
 
 # [project.scripts] intentionally omitted — this is an Hermes plugin,
 # not a CLI tool.  Consumers load it via the ``register(ctx)`` entry

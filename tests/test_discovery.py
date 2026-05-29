@@ -20,8 +20,8 @@ def _mnemosyne_plugin_available() -> bool:
 class TestBackendRegistry:
     """The registry has the expected backend entries."""
 
-    def test_four_known_backends(self):
-        assert len(_BACKEND_REGISTRY) == 4
+    def test_nine_known_backends(self):
+        assert len(_BACKEND_REGISTRY) == 9
 
     def test_contains_mnemosyne(self):
         keys = [e[0] for e in _BACKEND_REGISTRY]
@@ -39,6 +39,26 @@ class TestBackendRegistry:
         keys = [e[0] for e in _BACKEND_REGISTRY]
         assert "honcho" in keys
 
+    def test_contains_openviking(self):
+        keys = [e[0] for e in _BACKEND_REGISTRY]
+        assert "openviking" in keys
+
+    def test_contains_hindsight(self):
+        keys = [e[0] for e in _BACKEND_REGISTRY]
+        assert "hindsight" in keys
+
+    def test_contains_retaindb(self):
+        keys = [e[0] for e in _BACKEND_REGISTRY]
+        assert "retaindb" in keys
+
+    def test_contains_byterover(self):
+        keys = [e[0] for e in _BACKEND_REGISTRY]
+        assert "byterover" in keys
+
+    def test_contains_supermemory(self):
+        keys = [e[0] for e in _BACKEND_REGISTRY]
+        assert "supermemory" in keys
+
     def test_mnemosyne_label_is_plugin(self):
         entry = next(e for e in _BACKEND_REGISTRY if e[0] == "mnemosyne")
         assert "plugin" in entry[2].lower()
@@ -50,7 +70,7 @@ class TestDiscoverBackends:
     def test_returns_list_of_dicts(self):
         results = discover_backends()
         assert isinstance(results, list)
-        assert len(results) == 4
+        assert len(results) == 9
         for entry in results:
             assert isinstance(entry, dict)
             assert "config_key" in entry
@@ -90,7 +110,7 @@ class TestDiscoverBackends:
             assert entry["installed"] is False
 
     def test_find_spec_called_for_non_mnemosyne_backends(self):
-        """discover_backends calls find_spec for mem0, holographic, honcho."""
+        """discover_backends calls find_spec for all 8 non-mnemosyne backends."""
         with mock.patch(
             "multi_memory.discovery._is_mnemosyne_plugin_installed",
             return_value=False,
@@ -99,11 +119,15 @@ class TestDiscoverBackends:
         ) as mock_fs:
             mock_fs.return_value = mock.MagicMock()
             discover_backends()
-        # find_spec called for the 3 non-mnemosyne backends only
         expected_calls = [
             mock.call("plugins.memory.mem0"),
             mock.call("plugins.memory.holographic"),
             mock.call("plugins.memory.honcho"),
+            mock.call("plugins.memory.openviking"),
+            mock.call("plugins.memory.hindsight"),
+            mock.call("plugins.memory.retaindb"),
+            mock.call("plugins.memory.byterover"),
+            mock.call("plugins.memory.supermemory"),
         ]
         mock_fs.assert_has_calls(expected_calls, any_order=False)
 
@@ -111,6 +135,8 @@ class TestDiscoverBackends:
         """Each backend is independently checked."""
         def find_spec_side_effect(module):
             if module == "plugins.memory.holographic":
+                return mock.MagicMock()
+            if module == "plugins.memory.openviking":
                 return mock.MagicMock()
             return None
 
@@ -125,9 +151,11 @@ class TestDiscoverBackends:
 
         mnemosyne = next(r for r in results if r["config_key"] == "mnemosyne")
         holographic = next(r for r in results if r["config_key"] == "holographic")
+        openviking = next(r for r in results if r["config_key"] == "openviking")
         mem0 = next(r for r in results if r["config_key"] == "mem0")
         assert mnemosyne["installed"] is False
         assert holographic["installed"] is True
+        assert openviking["installed"] is True
         assert mem0["installed"] is False
 
     def test_result_order_matches_registry(self):

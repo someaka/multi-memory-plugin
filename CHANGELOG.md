@@ -5,45 +5,43 @@ All notable changes to the multi-memory plugin will be documented in this file.
 The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.2.0] — 2026-05-22
+## [0.4.0] — 2026-05-29
 
 ### Added
-- Standalone repo extracted from Hermes agent monorepo.
-- `plugin.yaml` — Hermes plugin metadata for discovery via `_ProviderCollector`.
-- `pyproject.toml` — setuptools build config with optional dependency extras.
-- `setup.cfg` — flake8 and pytest defaults.
-- `Makefile` — convenience targets for install, test, lint, clean, coverage.
-- `CONFIG.md` — full configuration reference covering both config formats and
-  per-backend options.
-- `CHANGELOG.md` — version history (this file).
-- `scripts/install.sh` — idempotent one-command installer (symlink + validate + test).
-- `scripts/setup.sh` — interactive wizard that discovers installed backends and
-  writes config.yaml.
-- `scripts/health_check.py` — CLI health check per backend, with `--json` output
-  and graceful handling of missing backends.
-- `.github/workflows/ci.yml` — CI pipeline (Python 3.11–3.13 on ubuntu-latest).
+- **5 new backend adapters**: OpenViking, Hindsight, RetainDB, ByteRover, Supermemory.
+  All 9 Hermes memory providers are now supported.
+- `_OpenVikingAdapter` — tools prefixed `viking_` (config key `openviking`)
+- `_HindsightAdapter` — tools prefixed `hindsight_`
+- `_RetainDBAdapter` — tools prefixed `retaindb_`
+- `_ByteRoverAdapter` — tools prefixed `brv_` (config key `byterover`)
+- `_SupermemoryAdapter` — tools prefixed `supermemory_`
+
+### Fixed
+- **HealthTracker now wired into lifecycle calls** — all lifecycle methods check
+  `is_open()` before calling sub-providers and record success/failure. Backends
+  that fail 3+ times consecutively are skipped (circuit breaker).
+- **Silent exception swallowing** — all `except Exception: pass` blocks in lifecycle
+  hooks now log at DEBUG level with backend name and error. No more invisible failures.
+- **handle_tool_call prefix matching** — now uses adapter `PREFIX` attribute instead
+  of `sub.name`, fixing routing for ByteRover (`brv_` vs `byterover`) and OpenViking
+  (`viking_` vs `openviking`).
+- **Fallback loop logging** — the fallback path in `handle_tool_call` now logs which
+  backend was tried and why it failed.
+- Hallucinated backends (Chroma, Pinecone, Weaviate, Qdrant, Milvus, Redis) removed
+  from discovery, health_check, and tests — only real Hermes backends are listed.
 
 ### Changed
-- `src/multi_memory/` — original plugin code extracted from Hermes monorepo
-  `plugins/memory/multi/` to standalone package.
-- `README.md` — updated install instructions for standalone repo.
-
-## [0.1.0] — 2026-05-21
-
-### Added
-- `MultiMemoryProvider` — fans out lifecycle calls across active sub-providers.
-- Four adapter classes: `_MnemosyneAdapter`, `_Mem0Adapter`, `_HolographicAdapter`,
-  `_HonchoAdapter`.
-- Tool name prefixing (`mnemosyne_`, `mem0_`, etc.) to avoid schema collisions.
-- Dual config format support (`multi.backends` dict and `providers` list).
-- Per-backend error isolation (try/except on every lifecycle call).
+- `discovery.py`: `_BACKEND_REGISTRY` expanded from 4 to 9 entries
+- `health_check.py`: `BACKENDS` dict expanded to cover all 9 backends
+- `pyproject.toml`: version bumped to 0.4.0, added optional deps for new backends
+- `plugin.yaml`: version bumped to 0.4.0, description updated
+- All tests updated for 9 backends (204 tests, all passing)
 
 ## [0.3.0] — 2026-05-28
 
 ### Fixed
 - `_MnemosyneAdapter`: uses Hermes plugin loader (`plugins.memory.load_memory_provider`)
   instead of `_try_import("mnemosyne")` which hit the pip MCP server package.
-  Mnemosyne is a user-installed plugin at `~/.hermes/plugins/mnemosyne/`.
 - `_MnemosyneAdapter`: `handle_tool_call` passes full prefixed tool names
   (`"mnemosyne_recall"`) since Mnemosyne dispatches on full names internally.
 - `_MnemosyneAdapter`: `get_tool_schemas` returns schemas directly from delegate
@@ -59,19 +57,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `health_check.py`: Mnemosyne detection uses plugin loader; Mem0 env check
   also reads `~/.hermes/mem0.json` for API key.
 
-### Tests
-- **184 tests** (up from 183), all passing.
-- Added `TestNoDoublePrefix` (5 tests): verifies Mem0, Honcho, Holographic,
-  and Mnemosyne adapters produce correctly prefixed tool names without duplication.
-- Updated `test_discovery.py`: all tests use mock-based plugin loader checks
-  instead of `find_spec("mnemosyne")`.
-- Removed unused `pytest` import from `test_discovery.py`.
-
-### Docs
-- README.md: updated "How it works" diagram to show correct prefix handling.
-- README.md: added notes about per-adapter prefix strategies.
-- CONFIG.md: updated Mnemosyne and Mem0 backend descriptions.
-
 ## [0.2.1] — 2026-05-28
 
 ### Fixed
@@ -82,21 +67,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   when parent package (e.g. `plugins`) is missing.
 - `discovery.py`: `discover_backends` catches `ModuleNotFoundError` from `find_spec`.
 - `pyproject.toml`: added `pyyaml>=6.0` to runtime deps, `test` optional-deps group.
-- CI: install test deps (`pip install -e ".[all,test]"`).
 
-### Changed
-- Removed redundant `name: str = "multi"` class attribute (property already provides it).
-- Removed unused `Any` import from `validate.py`.
-- Added `-> None` return type hint to `register()`.
-- Added comment on `_MnemosyneAdapter.name` property explaining the override.
+## [0.2.0] — 2026-05-22
 
-### Tests
-- **154 tests** (up from 131), **99% coverage** (up from 94%).
-- Added `TestSubProviderAdapterDelegation` (16 mock-based tests for adapter delegation).
-- Added `TestRegisterFunction`, `TestLoadConfigEdgeCases`, `TestNamePropertyConsistency`.
-- Extracted `_holographic_available()` to `conftest.py` (was duplicated in 2 files).
-- Replaced fragile generator-throw exception patterns with `side_effect`.
-- Replaced `importlib.reload()` in config tests with `mock.patch`.
-- Mock-based `provider` fixture (no real backends required).
-- `requires_holographic` skip marker for tests needing Hermes plugins package.
-- 16 unit tests covering config parsing, backend loading, and routing.
+### Added
+- Standalone repo extracted from Hermes agent monorepo.
+- `plugin.yaml` — Hermes plugin metadata for discovery via `_ProviderCollector`.
+- `pyproject.toml` — setuptools build config with optional dependency extras.
+- `CONFIG.md` — full configuration reference.
+- `CHANGELOG.md` — version history (this file).
+- `scripts/install.sh` — idempotent one-command installer.
+- `scripts/setup.sh` — interactive wizard.
+- `scripts/health_check.py` — CLI health check per backend.
+- `.github/workflows/ci.yml` — CI pipeline (Python 3.11–3.13).
+
+## [0.1.0] — 2026-05-21
+
+### Added
+- `MultiMemoryProvider` — fans out lifecycle calls across active sub-providers.
+- Four adapter classes: `_MnemosyneAdapter`, `_Mem0Adapter`, `_HolographicAdapter`,
+  `_HonchoAdapter`.
+- Tool name prefixing to avoid schema collisions.
+- Dual config format support (`multi.backends` dict and `providers` list).
+- Per-backend error isolation (try/except on every lifecycle call).

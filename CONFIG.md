@@ -4,7 +4,8 @@
 
 The multi-memory plugin lets you run multiple memory backends simultaneously via a single
 `MemoryProvider` instance. All lifecycle calls (`initialize`, `shutdown`, `prefetch`,
-`sync_turn`, etc.) fan out to every active sub-provider with per-provider error isolation.
+`sync_turn`, etc.) fan out to every active sub-provider with per-provider error isolation
+and circuit-breaker protection.
 
 Configuration is read from `~/.hermes/config.yaml` (or `$HERMES_HOME/config.yaml`).
 
@@ -25,10 +26,12 @@ memory:
       mem0: {}                   # requires MEM0_API_KEY in env
       holographic: {}            # stdlib-only
       honcho: {}                 # requires honcho-ai package
+      openviking: {}             # requires openviking + running server
+      hindsight: {}              # requires hindsight-client
+      retaindb: {}               # requires RETAINDB_API_KEY
+      byterover: {}              # requires brv CLI (npm)
+      supermemory: {}            # requires SUPERMEMORY_API_KEY
 ```
-
-Each backend value is a dict of per-backend options (currently none are defined, all backends
-use `{}`, but the format is future-proof for per-backend tuning).
 
 ### Format 2: `providers` list (concise)
 
@@ -40,10 +43,12 @@ memory:
     - "mem0"
     - "holographic"
     - "honcho"
+    - "openviking"
+    - "hindsight"
+    - "retaindb"
+    - "byterover"
+    - "supermemory"
 ```
-
-Both formats are accepted by `_normalise_multi_config()`. The `providers` list wins when
-both are present.
 
 ---
 
@@ -59,20 +64,7 @@ both are present.
 | Tool prefix | `mnemosyne_` |
 | Config key | `mnemosyne` |
 
-The Mnemosyne backend is a user-installed plugin deployed to
-`~/.hermes/plugins/mnemosyne/` (see [AxDSan/mnemosyne](https://github.com/AxDSan/mnemosyne)).
-Uses the Hermes plugin loader — no pip install needed. Tools are self-prefixed
-(`mnemosyne_recall`, `mnemosyne_remember`, etc.) so the adapter passes them through
-without stripping.
-
-**Config example:**
-```yaml
-memory:
-  provider: multi
-  multi:
-    backends:
-      mnemosyne: {}
-```
+User-installed plugin. Tools are self-prefixed (`mnemosyne_recall`, `mnemosyne_remember`, etc.).
 
 ---
 
@@ -82,27 +74,11 @@ memory:
 |----------|-------|
 | Python dep | `mem0ai>=0.1` |
 | Env vars | `MEM0_API_KEY` |
-| Module | `plugins.memory.mem0` (bundled) |
+| Module | `plugins.memory.mem0` |
 | Tool prefix | `mem0_` |
 | Config key | `mem0` |
 
-Mem0 provides cloud-hosted memory with semantic search. Requires a Mem0 API key.
-Tools are self-prefixed by the provider (`mem0_search`) — the adapter strips
-and re-adds the prefix to avoid double-prefixing.
-
-**Config example:**
-```yaml
-memory:
-  provider: multi
-  multi:
-    backends:
-      mem0: {}
-```
-
-Requires `MEM0_API_KEY` in the environment, `~/.hermes/.env`, or `~/.hermes/mem0.json`:
-```json
-{"api_key": "your-mem0-api-key"}
-```
+Cloud-hosted memory with semantic search. Requires `MEM0_API_KEY`.
 
 ---
 
@@ -112,21 +88,11 @@ Requires `MEM0_API_KEY` in the environment, `~/.hermes/.env`, or `~/.hermes/mem0
 |----------|-------|
 | Python dep | stdlib-only |
 | Env vars | None |
-| Module | `plugins.memory.holographic.HolographicMemoryProvider` |
+| Module | `plugins.memory.holographic` |
 | Tool prefix | `holographic_` |
 | Config key | `holographic` |
 
-Holographic memory uses local embedding + SQLite-based vector storage (stdlib only).
-No external dependencies.
-
-**Config example:**
-```yaml
-memory:
-  provider: multi
-  multi:
-    backends:
-      holographic: {}
-```
+Local SQLite fact store with FTS5 search and HRR compositional queries.
 
 ---
 
@@ -136,20 +102,86 @@ memory:
 |----------|-------|
 | Python dep | `honcho-ai` |
 | Env vars | `HONCHO_API_KEY`, `HONCHO_APP_ID` |
-| Module | `plugins.memory.honcho.HonchoMemoryProvider` |
+| Module | `plugins.memory.honcho` |
 | Tool prefix | `honcho_` |
 | Config key | `honcho` |
 
-Honcho provides a hosted memory platform. Requires both `HONCHO_API_KEY` and `HONCHO_APP_ID`.
+AI-native cross-session user modeling with dialectic reasoning.
 
-**Config example:**
-```yaml
-memory:
-  provider: multi
-  multi:
-    backends:
-      honcho: {}
-```
+---
+
+### OpenViking (`openviking`)
+
+| Property | Value |
+|----------|-------|
+| Python dep | `openviking` |
+| Env vars | `OPENVIKING_ENDPOINT` (default: `http://127.0.0.1:1933`) |
+| Module | `plugins.memory.openviking` |
+| Tool prefix | `viking_` (note: differs from config key) |
+| Config key | `openviking` |
+
+Context database with filesystem-style knowledge hierarchy and tiered retrieval.
+Tools: `viking_search`, `viking_read`, `viking_browse`, `viking_remember`, `viking_add_resource`.
+
+---
+
+### Hindsight (`hindsight`)
+
+| Property | Value |
+|----------|-------|
+| Python dep | `hindsight-client` |
+| Env vars | `HINDSIGHT_API_KEY` |
+| Module | `plugins.memory.hindsight` |
+| Tool prefix | `hindsight_` |
+| Config key | `hindsight` |
+
+Long-term memory with knowledge graph and entity resolution.
+Tools: `hindsight_retain`, `hindsight_recall`, `hindsight_reflect`.
+
+---
+
+### RetainDB (`retaindb`)
+
+| Property | Value |
+|----------|-------|
+| Python dep | none (uses urllib) |
+| Env vars | `RETAINDB_API_KEY` |
+| Module | `plugins.memory.retaindb` |
+| Tool prefix | `retaindb_` |
+| Config key | `retaindb` |
+
+Cloud memory API with hybrid search and delta compression.
+Tools: `retaindb_profile`, `retaindb_search`, `retaindb_context`, `retaindb_remember`, `retaindb_forget`.
+
+---
+
+### ByteRover (`byterover`)
+
+| Property | Value |
+|----------|-------|
+| Python dep | CLI tool (`npm install -g byterover-cli`) |
+| Env vars | None (optional `BRV_API_KEY` for cloud sync) |
+| Module | `plugins.memory.byterover` |
+| Tool prefix | `brv_` (note: differs from config key) |
+| Config key | `byterover` |
+
+Persistent memory via the `brv` CLI. Local-first with optional cloud sync.
+Tools: `brv_query`, `brv_curate`, `brv_status`.
+
+---
+
+### Supermemory (`supermemory`)
+
+| Property | Value |
+|----------|-------|
+| Python dep | `supermemory` |
+| Env vars | `SUPERMEMORY_API_KEY` |
+| Module | `plugins.memory.supermemory` |
+| Tool prefix | `supermemory_` |
+| Config key | `supermemory` |
+
+Semantic long-term memory with profile recall and session-end graph building.
+Tools: `supermemory_store`, `supermemory_search`, `supermemory_forget`, `supermemory_profile`.
 
 ---
 
@@ -174,37 +206,6 @@ A backend is treated as disabled if its value is one of:
 - `0` (integer)
 - `null` / `~` (YAML null)
 
-Any other value (including `{}`, `true`, or a dict with options) = enabled.
-
----
-
-## Advanced: Custom Hermes Home
-
-Set `HERMES_HOME` in the environment to use a non-default config path:
-
-```bash
-export HERMES_HOME=/path/to/custom/hermes
-```
-
-The plugin reads `$HERMES_HOME/config.yaml` at initialization time.
-
----
-
-## Validation
-
-After configuration, validate everything works:
-
-```bash
-# Quick health check
-python scripts/health_check.py --verbose
-
-# Run test suite
-python -m pytest tests/ -v
-
-# Run all health checks as JSON
-python scripts/health_check.py --json
-```
-
 ---
 
 ## Troubleshooting
@@ -215,12 +216,16 @@ tail -f ~/.hermes/logs/hermes.log | grep "multi-memory"
 ```
 
 **Unknown backend warning?** Check the config key spelling. Valid keys: `mnemosyne`,
-`mem0`, `holographic`, `honcho`.
+`mem0`, `holographic`, `honcho`, `openviking`, `hindsight`, `retaindb`, `byterover`, `supermemory`.
 
 **ImportError for a backend?** Install the missing package:
 ```bash
-pip install mem0ai     # for Mem0
-pip install honcho-ai  # for Honcho
+pip install mem0ai         # for Mem0
+pip install honcho-ai      # for Honcho
+pip install openviking     # for OpenViking
+pip install hindsight-client  # for Hindsight
+pip install supermemory    # for Supermemory
+npm install -g byterover-cli  # for ByteRover
 ```
 
-Both Mnemosyne and Holographic are stdlib-only — no install needed.
+Mnemosyne and Holographic are stdlib-only — no install needed.

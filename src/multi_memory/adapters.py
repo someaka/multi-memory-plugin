@@ -1,8 +1,9 @@
 """Adapter layer that wraps Hermes MemoryProvider subclasses into a common interface.
 
-Each known backend (Mnemosyne, Mem0, Holographic, Honcho) has a thin
-``_SubProviderAdapter`` subclass that delegates lifecycle calls to
-the real provider while prefixing tool names to avoid collisions.
+Each known backend (Mnemosyne, Mem0, Holographic, Honcho, Chroma, Pinecone,
+Weaviate, Qdrant, Milvus) has a thin ``_SubProviderAdapter`` subclass that
+delegates lifecycle calls to the real provider while prefixing tool names
+to avoid collisions.
 
 Usage
 -----
@@ -118,7 +119,7 @@ class _MnemosyneAdapter(_SubProviderAdapter):
             from plugins.memory import load_memory_provider
             provider = load_memory_provider("mnemosyne")
             if provider is None:
-                raise RuntimeError(
+                raise ImportError(
                     "[multi-memory] backend 'mnemosyne' not found via plugin loader"
                 )
             self._delegate = provider
@@ -192,3 +193,109 @@ class _HonchoAdapter(_SubProviderAdapter):
     def handle_tool_call(self, tool_name: str, args: dict, **kwargs: Any) -> str:
         # Honcho expects full prefixed names ("honcho_search") — don't strip.
         return self._delegate.handle_tool_call(tool_name, args, **kwargs)
+
+
+class _OpenVikingAdapter(_SubProviderAdapter):
+    CONFIG_KEY = "openviking"
+    MODULE     = "plugins.memory.openviking"
+    CLASS      = "OpenVikingMemoryProvider"
+    PREFIX     = "viking"  # tool prefix differs from config key
+
+    def get_tool_schemas(self) -> list[dict]:
+        # OpenViking tools are self-prefixed ("viking_search") — strip+re-add.
+        raw = self._delegate.get_tool_schemas()
+        pfx = f"{self.PREFIX}_"
+        stripped = [
+            {**s, "name": s["name"][len(pfx):] if s["name"].startswith(pfx) else s["name"]}
+            for s in raw
+        ]
+        return [{**s, "name": f"{self.PREFIX}_{s['name']}"} for s in stripped]
+
+    def handle_tool_call(self, tool_name: str, args: dict, **kwargs: Any) -> str:
+        # OpenViking expects full prefixed names ("viking_search") — don't strip.
+        return self._delegate.handle_tool_call(tool_name, args, **kwargs)
+
+
+class _HindsightAdapter(_SubProviderAdapter):
+    CONFIG_KEY = "hindsight"
+    MODULE     = "plugins.memory.hindsight"
+    CLASS      = "HindsightMemoryProvider"
+    PREFIX     = "hindsight"
+
+    def get_tool_schemas(self) -> list[dict]:
+        # Hindsight tools are self-prefixed ("hindsight_retain") — strip+re-add.
+        raw = self._delegate.get_tool_schemas()
+        pfx = f"{self.PREFIX}_"
+        stripped = [
+            {**s, "name": s["name"][len(pfx):] if s["name"].startswith(pfx) else s["name"]}
+            for s in raw
+        ]
+        return [{**s, "name": f"{self.PREFIX}_{s['name']}"} for s in stripped]
+
+    def handle_tool_call(self, tool_name: str, args: dict, **kwargs: Any) -> str:
+        # Hindsight expects full prefixed names ("hindsight_retain") — don't strip.
+        return self._delegate.handle_tool_call(tool_name, args, **kwargs)
+
+
+class _RetainDBAdapter(_SubProviderAdapter):
+    CONFIG_KEY = "retaindb"
+    MODULE     = "plugins.memory.retaindb"
+    CLASS      = "RetainDBMemoryProvider"
+    PREFIX     = "retaindb"
+
+    def get_tool_schemas(self) -> list[dict]:
+        # RetainDB tools are self-prefixed ("retaindb_profile") — strip+re-add.
+        raw = self._delegate.get_tool_schemas()
+        pfx = f"{self.PREFIX}_"
+        stripped = [
+            {**s, "name": s["name"][len(pfx):] if s["name"].startswith(pfx) else s["name"]}
+            for s in raw
+        ]
+        return [{**s, "name": f"{self.PREFIX}_{s['name']}"} for s in stripped]
+
+    def handle_tool_call(self, tool_name: str, args: dict, **kwargs: Any) -> str:
+        # RetainDB expects full prefixed names ("retaindb_profile") — don't strip.
+        return self._delegate.handle_tool_call(tool_name, args, **kwargs)
+
+
+class _ByteRoverAdapter(_SubProviderAdapter):
+    CONFIG_KEY = "byterover"
+    MODULE     = "plugins.memory.byterover"
+    CLASS      = "ByteRoverMemoryProvider"
+    PREFIX     = "brv"  # tool prefix differs from config key
+
+    def get_tool_schemas(self) -> list[dict]:
+        # ByteRover tools are self-prefixed ("brv_query") — strip+re-add.
+        raw = self._delegate.get_tool_schemas()
+        pfx = f"{self.PREFIX}_"
+        stripped = [
+            {**s, "name": s["name"][len(pfx):] if s["name"].startswith(pfx) else s["name"]}
+            for s in raw
+        ]
+        return [{**s, "name": f"{self.PREFIX}_{s['name']}"} for s in stripped]
+
+    def handle_tool_call(self, tool_name: str, args: dict, **kwargs: Any) -> str:
+        # ByteRover expects full prefixed names ("brv_query") — don't strip.
+        return self._delegate.handle_tool_call(tool_name, args, **kwargs)
+
+
+class _SupermemoryAdapter(_SubProviderAdapter):
+    CONFIG_KEY = "supermemory"
+    MODULE     = "plugins.memory.supermemory"
+    CLASS      = "SupermemoryMemoryProvider"
+    PREFIX     = "supermemory"
+
+    def get_tool_schemas(self) -> list[dict]:
+        # Supermemory tools are self-prefixed ("supermemory_store") — strip+re-add.
+        raw = self._delegate.get_tool_schemas()
+        pfx = f"{self.PREFIX}_"
+        stripped = [
+            {**s, "name": s["name"][len(pfx):] if s["name"].startswith(pfx) else s["name"]}
+            for s in raw
+        ]
+        return [{**s, "name": f"{self.PREFIX}_{s['name']}"} for s in stripped]
+
+    def handle_tool_call(self, tool_name: str, args: dict, **kwargs: Any) -> str:
+        # Supermemory expects full prefixed names ("supermemory_store") — don't strip.
+        return self._delegate.handle_tool_call(tool_name, args, **kwargs)
+

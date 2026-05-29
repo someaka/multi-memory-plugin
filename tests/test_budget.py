@@ -92,12 +92,17 @@ class TestNamespaceValidator:
     """NamespaceValidator: validates PREFIX attributes on adapter classes."""
 
     def test_all_subclasses_have_prefix(self):
-        """All four standard adapter classes should validate cleanly."""
+        """All nine adapter classes should validate cleanly."""
         from multi_memory.adapters import (
             _MnemosyneAdapter,
             _Mem0Adapter,
             _HolographicAdapter,
             _HonchoAdapter,
+            _OpenVikingAdapter,
+            _HindsightAdapter,
+            _RetainDBAdapter,
+            _ByteRoverAdapter,
+            _SupermemoryAdapter,
         )
 
         validator = NamespaceValidator([
@@ -105,6 +110,11 @@ class TestNamespaceValidator:
             _Mem0Adapter,
             _HolographicAdapter,
             _HonchoAdapter,
+            _OpenVikingAdapter,
+            _HindsightAdapter,
+            _RetainDBAdapter,
+            _ByteRoverAdapter,
+            _SupermemoryAdapter,
         ])
         warnings = validator.validate_all()
         assert warnings == []

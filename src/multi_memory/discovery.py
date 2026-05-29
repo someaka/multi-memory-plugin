@@ -1,6 +1,6 @@
 """Backend discovery — report which backends are installable on this system.
 
-The ``discover_backends()`` function checks each of the four supported
+The ``discover_backends()`` function checks each of the supported
 backends and returns a list of backend descriptors, each with an
 ``installed`` boolean and module path.
 """
@@ -13,10 +13,15 @@ from importlib.util import find_spec
 
 # Each entry: (config_key, module_path, label)
 _BACKEND_REGISTRY: list[tuple[str, str, str]] = [
-    ("mnemosyne",   "mnemosyne",                 "Mnemosyne (plugin)"),
-    ("mem0",        "plugins.memory.mem0",       "Mem0"),
-    ("holographic", "plugins.memory.holographic", "Holographic (stdlib)"),
-    ("honcho",      "plugins.memory.honcho",     "Honcho"),
+    ("mnemosyne",   "mnemosyne",                   "Mnemosyne (plugin)"),
+    ("mem0",        "plugins.memory.mem0",         "Mem0"),
+    ("holographic", "plugins.memory.holographic",   "Holographic (stdlib)"),
+    ("honcho",      "plugins.memory.honcho",        "Honcho"),
+    ("openviking",  "plugins.memory.openviking",    "OpenViking"),
+    ("hindsight",   "plugins.memory.hindsight",     "Hindsight"),
+    ("retaindb",    "plugins.memory.retaindb",      "RetainDB"),
+    ("byterover",   "plugins.memory.byterover",     "ByteRover"),
+    ("supermemory", "plugins.memory.supermemory",   "Supermemory"),
 ]
 
 __all__ = ["discover_backends", "installed_backends"]
@@ -30,7 +35,7 @@ def _is_mnemosyne_plugin_installed() -> bool:
 
 
 def discover_backends() -> list[dict[str, str | bool]]:
-    """Probe all four known backends and report installation status.
+    """Probe all known backends and report installation status.
 
     Returns
     -------

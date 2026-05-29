@@ -57,6 +57,20 @@ All 9 backends self-prefix their tools. The adapter pattern is:
 
 `MultiMemoryProvider.handle_tool_call()` matches tools by adapter PREFIX (not `sub.name`) to handle ByteRover and OpenViking correctly.
 
+## Error logging standard
+
+Every `except` block in the plugin MUST:
+1. Capture the exception with `as exc`
+2. Log it with `logger.debug` or `logger.warning`
+3. Record failure with `self._health.record_failure(sub.name)` (for lifecycle hooks)
+
+Zero tolerance for silent failures:
+- `except: pass` → forbidden
+- `except Exception:` without `as exc` → forbidden
+- Bare `except:` → forbidden
+
+Config-time failures (missing package, missing credentials) use `logger.warning` so users see them at default log levels. Runtime lifecycle failures use `logger.debug` since they're transient and the circuit breaker handles them.
+
 ## HealthTracker integration
 
 All lifecycle methods check `self._health.is_open(sub.name)` before calling sub-providers. On success, `record_success()` resets the failure counter. On failure, `record_failure()` increments it. After 3 consecutive failures, the circuit opens and that backend is skipped.
@@ -119,6 +133,4 @@ sub.method = lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("fail"))
 
 2. **`find_spec` raises for missing parent packages** — `find_spec("plugins.memory.holographic")` raises `ModuleNotFoundError` when `plugins` doesn't exist. Always wrap in `try/except (ModuleNotFoundError, ValueError)`.
 
-3. **Adapter prefix handling varies** — All 9 backends self-prefix their tools. The adapter strips and re-adds the prefix. ByteRover uses `brv_` and OpenViking uses `viking_` as tool prefixes (differing from their config keys).
-
-4. **Config has two formats** — `providers: [list]` and `multi.backends: {dict}` are both valid. The `providers` list wins. Tests must cover both.
+3. **Config has two formats** — `providers: [list]` and `multi.backends: {dict}` are both valid. The `providers` list wins. Tests must cover both.

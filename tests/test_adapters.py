@@ -81,7 +81,7 @@ class TestLoadBackendsFromConfig:
         result = _load_backends_from_config(cfg)
         assert "mnemosyne" not in [a.name for a in result]
 
-    def test_False_capital_skipped(self):
+    def test_false_capital_skipped(self):
         cfg = {"memory": {"multi": {"backends": {"mnemosyne": "False", "mem0": True}}}}
         result = _load_backends_from_config(cfg)
         assert "mnemosyne" not in [a.name for a in result]
@@ -146,7 +146,7 @@ class TestTryImport:
 
     def test_none_for_exception(self):
         """Returns None if import raises (e.g. broken module).
-        
+
         We test this by patching find_spec to return something truthy
         but import_module to raise.
         """
@@ -347,11 +347,11 @@ class TestLifecycleHooks:
             original_init = sub.initialize
 
             def make_init(idx, orig):
-                def new_init(*a, **kw):
+                def new_init(*args, **kwargs):
                     fail_flags.append(idx)
                     if idx == 0:
                         raise RuntimeError(f"fail {idx}")
-                    return orig(*a, **kw)
+                    return orig(*args, **kwargs)
                 return new_init
 
             sub.initialize = make_init(i, original_init)
@@ -373,13 +373,13 @@ class TestLifecycleHooks:
         """Failure in one sub's shutdown() doesn't stop others."""
         flags = []
         for i, sub in enumerate(provider._subs):
-            def make_shutdown(idx, orig):
+            def make_shutdown(idx):
                 def fn():
                     flags.append(idx)
                     if idx % 2 == 0:
                         raise RuntimeError(f"shutdown fail {idx}")
                 return fn
-            sub.shutdown = make_shutdown(i, sub.shutdown)
+            sub.shutdown = make_shutdown(i)
         provider.shutdown()  # Should not raise
         assert len(flags) == len(provider._subs)
 
@@ -906,7 +906,8 @@ class TestNamePropertyConsistency:
 
 class TestNoDoublePrefix:
     """Adapters wrapping providers with self-prefixed tool names
-    (Mem0, Honcho, Mnemosyne) must NOT double-prefix schemas."""
+    (Mem0, Honcho, Mnemosyne) must NOT double-prefix schemas.
+    """
 
     def _make_mem0_adapter(self):
         mock_delegate = mock.MagicMock()

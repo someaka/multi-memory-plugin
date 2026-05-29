@@ -27,9 +27,8 @@ provider, and one backend crashing won't take down the rest.
 | **[ByteRover](https://byterover.dev)** | CLI-first local knowledge tree | `npm install -g byterover-cli` | — |
 | **[Supermemory](https://supermemory.ai)** | Semantic long-term graph memory | `pip install supermemory` | `SUPERMEMORY_API_KEY` |
 
-Backends you haven't installed are skipped with a **warning in the logs**
-telling you exactly why — missing package, missing API key, or failed import.
-Nothing disappears silently.
+Backends you haven't installed are skipped with a **warning in the logs** —
+missing package, missing API key, or failed import. Nothing disappears silently.
 
 ---
 
@@ -60,16 +59,16 @@ own setup — see the table above for install commands and env vars.
 ## How it works
 
 ```
-Model calls: mnemosyne_recall(...)  ──┐
-Model calls: viking_search(...)     ──┤
-Model calls: brv_query(...)         ──┼──▶  MultiMemoryProvider
-Model calls: supermemory_store(...) ──┤         │
-                                      │    ┌────┴────┐
-                                      │    ▼         ▼
-                                      │ Mnemosyne  OpenViking  ...
-                                      │    │         │
-                                      │    ▼         ▼
-                                      │  SQLite    Viking DB
+Model calls: mnemosyne_recall(...)   ──┐
+Model calls: viking_search(...)      ──┤
+Model calls: brv_query(...)          ──┼──▶  MultiMemoryProvider
+Model calls: supermemory_store(...)  ──┤         │
+                                       │    ┌────┴────┐
+                                       │    ▼         ▼
+                                       │ Mnemosyne  OpenViking  ...
+                                       │    │         │
+                                       │    ▼         ▼
+                                       │  SQLite    Viking DB
 ```
 
 **Prefix routing** — each backend owns a tool-name prefix (`mnemosyne_`,

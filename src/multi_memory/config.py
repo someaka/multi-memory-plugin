@@ -33,6 +33,7 @@ __all__ = ["load_multi_config", "get_enabled_backends"]
 
 
 def load_multi_config() -> dict[str, Any]:
+    """Load the Hermes config YAML from the default path."""
     try:
         with open(_CONFIG_PATH) as f:
             return yaml.safe_load(f) or {}

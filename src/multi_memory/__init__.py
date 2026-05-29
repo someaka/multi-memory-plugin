@@ -45,6 +45,7 @@ except ImportError:
     import abc
     class MemoryProvider(abc.ABC):  # type: ignore[no-redef]
         """Stub base class for standalone testing outside Hermes."""
+
         name: str = ""
         @abc.abstractmethod
         def is_available(self) -> bool: ...

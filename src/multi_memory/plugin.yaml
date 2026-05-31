@@ -1,4 +1,4 @@
-name: multi-memory
+name: multi
 version: 0.6.0
 description: |
   Run multiple memory providers (Mnemosyne, Mem0, Holographic, Honcho,

@@ -1,6 +1,6 @@
 # multi-memory
 
-Run multiple [Hermes](https://github.com/NousResearch/hermes-agent) memory backends at the same time, through a single provider.
+A [Hermes](https://github.com/NousResearch/hermes-agent) memory provider that runs multiple memory backends at once.
 
 [![CI](https://github.com/someaka/multi-memory-plugin/actions/workflows/ci.yml/badge.svg)](https://github.com/someaka/multi-memory-plugin/actions/workflows/ci.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
@@ -11,64 +11,50 @@ Run multiple [Hermes](https://github.com/NousResearch/hermes-agent) memory backe
 ## Install
 
 ```bash
-# Symlink into Hermes plugin directory
-ln -sf "$(pwd)/src/multi_memory" ~/.hermes/hermes-agent/plugins/memory/multi/
+hermes plugins install someaka/multi-memory-plugin
+```
 
-# Add to ~/.hermes/config.yaml
-cat >> ~/.hermes/config.yaml << 'EOF'
+Then configure which backends to activate:
+
+```bash
+hermes memory setup
+```
+
+Or edit `~/.hermes/config.yaml` directly:
+
+```yaml
 memory:
   provider: multi
   multi:
     backends:
-      mnemosyne: {}
       holographic: {}
-EOF
-
-# Restart Hermes
+      mnemosyne: {}
+      mem0: {}
 ```
 
-Each backend needs its own setup (API keys, packages, etc). See the
-[backend table](#backends) below or **[CONFIG.md](CONFIG.md)** for
-per-backend details.
+Restart Hermes. Each backend needs its own setup — API keys, packages, etc.
+See **[CONFIG.md](CONFIG.md)** for per-backend details.
 
 ---
 
 ## How it works
 
-Hermes allows one memory provider at a time. This plugin *is* that one
-provider — and it fans out to as many backends as you configure.
+Hermes only lets one memory provider be active. This plugin is that one
+provider — it delegates to as many backends as you list in config.
 
-```
-Model calls: mnemosyne_recall(...)   ──┐
-Model calls: viking_search(...)      ──┤
-Model calls: brv_query(...)          ──┼──▶  MultiMemoryProvider
-Model calls: holographic_store(...)  ──┤         │
-Model calls: supermemory_store(...)  ──┘    ┌────┴────┐
-                                            ▼         ▼
-                                       Mnemosyne  OpenViking  ...
-                                            │         │
-                                            ▼         ▼
-                                          SQLite    Viking DB
-```
+When the model calls a memory tool (like `mnemosyne_recall` or
+`holographic_store`), the plugin routes it to the right backend by matching
+the tool name prefix. Lifecycle hooks (`initialize`, `shutdown`,
+`sync_turn`, `on_session_end`, etc.) fire on every active backend. If one
+backend fails, the others keep working.
 
-**Tool routing** — each backend owns a prefix (`mnemosyne_`, `holographic_`,
-`mem0_`, `viking_`, `brv_`, …). Tool calls route to the matching backend
-automatically.
+A circuit breaker protects against broken backends: 3 consecutive failures
+opens the circuit, the backend is skipped for 30 seconds, then gets one
+probe call. If the probe succeeds, the circuit closes. If it fails, the
+cooldown doubles (up to 5 minutes).
 
-**Lifecycle fanout** — `initialize`, `shutdown`, `sync_turn`,
-`on_session_end`, `on_memory_write`, and every other hook fires on all
-active backends. One backend failing doesn't block the rest.
-
-**Circuit breaker** — after 3 consecutive failures a backend is skipped.
-After a 30-second cooldown it gets one probe call. If that succeeds, the
-circuit closes. If it fails, the cooldown doubles (up to 5 minutes).
-
-**Custom backends** — any `MemoryProvider` implementation dropped into
-`plugins/memory/<name>/` is automatically discovered. No code changes
-needed, just add its name to config.
-
-**CLI** — `hermes multi status`, `hermes multi list`, `hermes multi add`,
-`hermes multi remove`.
+Any `MemoryProvider` dropped into `plugins/memory/<name>/` is
+auto-discovered — no code changes needed. Just add the name to config.
 
 ---
 
@@ -76,17 +62,26 @@ needed, just add its name to config.
 
 | Backend | What | Install | Env vars |
 |:--------|:-----|:--------|:---------|
-| **[Mnemosyne](https://github.com/AxDSan/mnemosyne)** | Local SQLite + vector recall | Plugin at `~/.hermes/plugins/mnemosyne/` | — |
-| **[Holographic](https://github.com/NousResearch/hermes-agent/tree/main/plugins/memory/holographic)** | SQLite fact store, FTS5, HRR algebra | Built-in (stdlib) | — |
+| **[Holographic](https://github.com/NousResearch/hermes-agent/tree/main/plugins/memory/holographic)** | SQLite fact store, FTS5, HRR algebra | Built-in | — |
+| **[Mnemosyne](https://github.com/AxDSan/mnemosyne)** | Local SQLite + vector recall | Plugin | — |
 | **[Mem0](https://mem0.ai)** | Cloud semantic search | `pip install mem0ai` | `MEM0_API_KEY` |
 | **[Honcho](https://app.honcho.dev)** | Cross-session user modeling | `pip install honcho-ai` | `HONCHO_API_KEY` `HONCHO_APP_ID` |
-| **[OpenViking](https://github.com/volcengine/OpenViking)** | Context database, filesystem hierarchy | `pip install openviking` + server | `OPENVIKING_ENDPOINT` |
-| **[Hindsight](https://hindsight.vectorize.io)** | Knowledge graph + entity resolution | `pip install hindsight-client` | `HINDSIGHT_API_KEY` |
-| **[RetainDB](https://retaindb.com)** | Cloud hybrid search | — (stdlib urllib) | `RETAINDB_API_KEY` |
-| **[ByteRover](https://byterover.dev)** | CLI-first local knowledge tree | `npm install -g byterover-cli` | — |
-| **[Supermemory](https://supermemory.ai)** | Semantic long-term graph memory | `pip install supermemory` | `SUPERMEMORY_API_KEY` |
+| **[OpenViking](https://github.com/volcengine/OpenViking)** | Context database | `pip install openviking` + server | `OPENVIKING_ENDPOINT` |
+| **[Hindsight](https://hindsight.vectorize.io)** | Knowledge graph | `pip install hindsight-client` | `HINDSIGHT_API_KEY` |
+| **[RetainDB](https://retaindb.com)** | Cloud hybrid search | — | `RETAINDB_API_KEY` |
+| **[ByteRover](https://byterover.dev)** | CLI knowledge tree | `npm install -g byterover-cli` | — |
+| **[Supermemory](https://supermemory.ai)** | Semantic graph memory | `pip install supermemory` | `SUPERMEMORY_API_KEY` |
 
-Backends you haven't installed are skipped with a warning in the logs.
+---
+
+## CLI
+
+```bash
+hermes multi status          # active backends + config format
+hermes multi list            # all 9 backends, active markers
+hermes multi add <name>      # add a backend to config
+hermes multi remove <name>   # remove a backend from config
+```
 
 ---
 
@@ -95,22 +90,25 @@ Backends you haven't installed are skipped with a warning in the logs.
 Two equivalent formats:
 
 ```yaml
-# Dict — per-backend options
+# Dict
 memory:
   provider: multi
   multi:
     backends:
-      mnemosyne: {}
+      holographic: {}
       mem0: {}
-      holographic: false   # disabled without removing
+      mem0: false        # disabled
 
-# List — concise
+# List
 memory:
   provider: multi
   providers:
-    - mnemosyne
+    - holographic
     - mem0
 ```
+
+Disable a backend without removing: set it to `false`, `"false"`, `"0"`,
+`0`, or `null`.
 
 Full reference: **[CONFIG.md](CONFIG.md)**
 
@@ -119,8 +117,14 @@ Full reference: **[CONFIG.md](CONFIG.md)**
 ## Development
 
 ```bash
+# Symlink for live editing
+ln -sf "$(pwd)/src/multi_memory" ~/.hermes/hermes-agent/plugins/memory/multi/
+
+# Test
 pip install -e ".[all,test]"
 python -m pytest tests/ -v
+
+# Lint
 ruff check src/ tests/
 ```
 

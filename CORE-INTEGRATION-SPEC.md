@@ -1,108 +1,134 @@
-# Multi-Memory Plugin: What Actually Needs to Change
+# Multi-Memory Plugin: Core Integration Spec
 
-## TL;DR
+## The Real Picture
 
-**Zero core changes required.** The upstream MemoryManager already handles everything the plugin needs. The plugin implements `MemoryProvider`, registers once, and the core calls all lifecycle hooks, tools, and context fencing automatically.
+The upstream MemoryManager (NousResearch, 640 lines) has all the *features* — context fencing, streaming scrubber, metadata introspection, lifecycle hooks, tool routing. The plugin works with upstream as-is because the plugin is ONE external provider that fans out internally.
 
----
+But the fork (someaka) added three things the upstream lacks:
 
-## What the Upstream Core Already Has
-
-The `agent/memory_manager.py` MemoryManager (640 lines) already provides:
-
-| Feature | Core Implementation | Plugin Impact |
+| Fork Addition | Upstream Status | Impact |
 |---|---|---|
-| Context fencing | `build_memory_context_block()` wraps in `<memory-context>` | Plugin's `prefetch()` output gets wrapped automatically |
-| Streaming scrubber | `StreamingContextScrubber` class | Core strips memory-context from streaming output |
-| Stale block stripping | `sanitize_context()` | Core strips old blocks before injecting new ones |
-| Metadata write introspection | `_provider_memory_write_metadata_mode()` | Core detects keyword/positional/legacy automatically |
-| Sync messages introspection | `_provider_sync_accepts_messages()` | Core passes `messages` kwarg when provider supports it |
-| `hermes_home` injection | Passed via `initialize(**kwargs)` | Plugin gets it automatically |
-| `on_session_switch` empty guard | `if not new_session_id: return` | Core guards before calling providers |
-| Tool routing | `has_tool()` + `handle_tool_call()` | Core routes tool calls to plugin |
-| Tool schema collection | `get_all_tool_schemas()` with dedup | Core collects plugin schemas |
-| Lifecycle hooks | All 8 hooks called on all providers | Plugin receives all hooks |
-| Prefetch / sync | `prefetch_all()`, `sync_all()` | Core orchestrates across providers |
-| System prompt | `build_system_prompt()` | Core collects plugin's prompt block |
-| `add_provider()` | With tool name indexing | Plugin registers once |
-| `get_provider()` / `providers` | Name lookup + list | Core manages provider registry |
-| Toolset bypass | Memory tools use agent-level handler | Memory tools always visible |
+| `threading.RLock` | No lock — not thread-safe | Gateway mode (concurrent requests) can corrupt `_providers` list |
+| `remove_provider()` | Can add but not remove | No runtime hot-unplug of providers |
+| Multi-external-provider support | Hard limit: one external provider | Plugin works around this, but direct multi-provider config doesn't |
 
-**The core is feature-complete for the plugin's needs.**
+## What to Propose Upstream
 
----
+These three changes are **not plugin-specific** — they improve the MemoryManager for ALL providers. Each is small, backwards-compatible, and addresses a real gap.
 
-## What the Core is MISSING (Not Needed by Plugin, But Worth Fixing)
+### 1. Thread Safety (~15 lines)
 
-### 1. No `remove_provider()` on MemoryManager
+**Problem:** The MemoryManager's `_providers` list and `_tool_to_provider` dict are mutated by `add_provider()` and read by every lifecycle hook. In gateway mode, multiple requests run concurrently. No lock protects these structures.
 
-The core can add providers but can't remove them at runtime. The plugin doesn't need this because it manages its own sub-providers internally — the core only sees one provider ("multi").
-
-**Impact:** None for the plugin. Would be useful if someone wanted to hot-swap the entire memory provider at runtime.
-
-### 2. Silent failures in core lifecycle hooks
-
-The core's MemoryManager uses `logger.debug` for lifecycle hook exceptions — the same pattern we fixed in the plugin. If a provider fails in `on_turn_start()`, `sync_turn()`, `on_session_end()`, etc., the failure is invisible unless debug logging is enabled.
-
-**Impact:** Providers can fail silently. Users won't know their memory backend is broken.
-
-**Fix:** `logger.debug` → `logger.warning` in MemoryManager lifecycle hooks. ~10 lines.
-
----
-
-## The Plugin's Actual Value Proposition
-
-The plugin isn't needed because the core lacks features. It's needed because the core's MemoryManager has a **one-external-provider limit**:
+**Fix:** Add `threading.RLock`, snapshot under lock before iterating (same pattern the plugin uses).
 
 ```python
-# agent/memory_manager.py:267
-if not is_builtin:
-    if self._has_external:
-        logger.warning(
-            "Rejected memory provider '%s' — external provider '%s' is "
-            "already registered. Only one external memory provider is "
-            "allowed at a time.",
-            provider.name, existing,
-        )
-        return
+import threading
+
+class MemoryManager:
+    def __init__(self):
+        self._lock = threading.RLock()
+        # ...
+
+    def add_provider(self, provider):
+        with self._lock:
+            # existing logic
+            self._providers.append(provider)
+
+    def prefetch_all(self, query, **kwargs):
+        with self._lock:
+            providers = list(self._providers)
+        for provider in providers:  # iterate outside lock
+            # ...
 ```
 
-The plugin solves this by being **one provider that fans out to many backends**. The core sees one provider; the plugin manages the multi-backend complexity internally.
+**Why it matters for upstream:** Any memory provider (Honcho, Mem0, Mnemosyne) running in gateway mode has the same race condition. This isn't a plugin problem — it's a core correctness problem.
 
-### What the plugin adds on top of the core:
+### 2. `remove_provider()` (~25 lines)
 
-| Plugin Feature | Why Core Doesn't Need It |
+**Problem:** You can `add_provider()` but never remove one. If a provider fails or the user wants to swap, the only option is restarting the agent.
+
+**Fix:**
+
+```python
+def remove_provider(self, name: str) -> bool:
+    """Deregister a memory provider by name. Returns True if removed."""
+    if name == "builtin":
+        logger.warning("Cannot remove builtin memory provider")
+        return False
+    with self._lock:
+        target = None
+        remaining = []
+        for p in self._providers:
+            if p.name == name:
+                target = p
+            else:
+                remaining.append(p)
+        if target is None:
+            return False
+        self._providers = remaining
+        # Clean up tool mappings
+        tools_to_remove = [t for t, prov in self._tool_to_provider.items() if prov is target]
+        for t in tools_to_remove:
+            del self._tool_to_provider[t]
+    # Shutdown outside lock
+    try:
+        target.shutdown()
+    except Exception as e:
+        logger.warning("Provider '%s' shutdown failed: %s", name, e)
+    return True
+```
+
+**Why it matters for upstream:** Completes the API. `add_provider()` without `remove_provider()` is a half-feature. Any long-running agent (gateway, cron) needs the ability to hot-swap providers.
+
+### 3. Multi-External-Provider Support (~5 lines changed)
+
+**Problem:** The upstream MemoryManager rejects a second `add_provider()` call for non-builtin providers. This forces the plugin to be a single meta-provider that internally manages multiple backends — an extra layer of indirection.
+
+**Fix:** Remove the `_has_external` gate. Allow multiple external providers. Keep duplicate-name rejection.
+
+```python
+# Before (upstream):
+if not is_builtin:
+    if self._has_external:
+        logger.warning("Rejected '%s' — '%s' already registered. Only one allowed.", ...)
+        return
+    self._has_external = True
+
+# After:
+if any(p.name == provider.name for p in self._providers):
+    logger.warning("Duplicate provider name '%s', ignoring.", provider.name)
+    return
+```
+
+**Why it matters for upstream:** Users who want Mnemosyne + Honcho + Mem0 simultaneously shouldn't need a meta-provider wrapper. The MemoryManager already fans out to all providers — removing the artificial limit is natural.
+
+---
+
+## What the Plugin Adds (Not a Core Concern)
+
+These are plugin-specific and should NOT go into core:
+
+| Plugin Feature | Why It Stays in Plugin |
 |---|---|
-| 9 backend adapters (Mem0, Honcho, Mnemosyne, etc.) | Core doesn't know about specific backends |
-| Circuit breaker / health tracking | Core has basic try/except; plugin adds proactive failure detection |
-| Tool budget warnings | Plugin-specific concern (multiple backends = more tools) |
-| Namespace validation | Plugin-specific (multiple backends = prefix collision risk) |
+| 9 backend adapters | Core doesn't know about specific backends |
+| Circuit breaker / health tracking | Plugin's proactive failure detection for multi-backend |
+| Tool budget warnings | Plugin-specific (multiple backends = more tools) |
+| Namespace validation | Plugin-specific (prefix collision risk) |
 | Backend discovery + loading | Plugin-specific (scan for installed backends) |
-| Runtime add/remove sub-providers | Plugin manages its own `_subs` list |
 | Config normalization (3 formats) | Plugin-specific (multiple config conventions) |
 | close() vs shutdown() preference | Plugin-specific (connection pool cleanup) |
-| Holographic double-prefix fix | Plugin-specific adapter logic |
-| No silent failures (all WARNING) | Plugin improvement over core's debug-level logging |
+| Holographic double-prefix fix | Plugin adapter logic |
+| Runtime add/remove sub-providers | Plugin manages its own internal list |
 
 ---
 
-## What to Tell the Lead Dev
+## What the Lead Dev Gets
 
-1. **No core changes needed.** The plugin works with the existing MemoryManager as-is.
+1. **Thread-safe MemoryManager** — fixes a real bug in gateway mode, not a plugin nicety
+2. **Complete API** — `add_provider()` + `remove_provider()` symmetry
+3. **No artificial limits** — multiple external providers work without a meta-provider wrapper
+4. **No plugin-specific code in core** — all three changes benefit any provider, not just the multi-memory plugin
+5. **Backwards compatible** — existing single-provider configs work unchanged
 
-2. **The only improvement worth proposing upstream:** promote `logger.debug` → `logger.warning` in MemoryManager lifecycle hooks. This benefits ALL providers, not just the plugin. ~10 lines, no API change.
-
-3. **Optional nice-to-have:** `remove_provider()` on MemoryManager. Not needed by the plugin, but completes the API symmetry. ~15 lines.
-
-4. **The plugin handles the "interference between backends" problem** that the lead dev doesn't want to deal with: circuit breaker, health tracking, namespace validation, prefix management, tool budget warnings. The core's MemoryManager is a dumb pipe; the plugin is the smart manager.
-
----
-
-## Summary
-
-| Category | Count | Details |
-|---|---|---|
-| Core changes REQUIRED | **0** | Plugin works as-is |
-| Core improvements WORTH PROPOSING | **1** | `logger.debug` → `logger.warning` (~10 lines) |
-| Core nice-to-have | **1** | `remove_provider()` (~15 lines) |
-| Plugin-only features | **10+** | All multi-backend complexity |
+**Total core changes: ~45 lines across one file (`agent/memory_manager.py`).**

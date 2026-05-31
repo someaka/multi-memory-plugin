@@ -1,31 +1,26 @@
-# Multi-Memory Plugin: What to Propose Upstream
+# Multi-Memory Plugin: Core Integration
 
-## Context
+## Nothing to Propose Upstream
 
-The upstream MemoryManager allows one external provider. This is deliberate. The multi-memory plugin is that one provider. It manages multiple backends internally — thread safety, circuit breaker, health tracking, namespace validation are all plugin-internal concerns.
+The upstream MemoryManager has one external provider. It's added at startup, used until shutdown. There's no list to manage, no concurrent writes, no multi-backend complexity.
 
-## Proposals (if worth making at all)
+All of that is the plugin's job. The plugin IS the one provider.
 
-### 1. `remove_provider()` (~25 lines)
+## What the Plugin Handles
 
-You can `add_provider()` but never remove. For long-running agents (gateway, cron), hot-swapping a provider requires a restart.
+Everything related to managing multiple backends:
 
-This is genuinely useful for any provider, not just the plugin.
+- Thread safety (RLock for sub-provider list)
+- Sub-provider lifecycle (add, remove, shutdown)
+- Circuit breaker / health tracking
+- Tool budget warnings
+- Namespace validation / prefix management
+- Backend discovery + loading
+- Config normalization
+- Silent failure prevention (logger.warning)
+- Connection pool cleanup (close vs shutdown)
+- Adapter-specific fixes (holographic double-prefix, etc.)
 
-### 2. `logger.debug` → `logger.warning` in lifecycle hooks (~10 lines)
+## Upstream Is Done
 
-The core swallows provider exceptions at debug level. If Honcho or Mem0 fails, nobody knows unless debug logging is on.
-
-This benefits every provider.
-
-## Not Proposing
-
-- **Thread safety (RLock)** — no race condition with one provider. The plugin manages its own lock internally for sub-providers. Not upstream's problem.
-- **Multi-provider support** — the one-provider limit is the design. The plugin exists because of it.
-
-## Summary
-
-| Item | Lines | Upstream Benefit |
-|---|---|---|
-| `remove_provider()` | ~25 | Any long-running agent |
-| Log levels debug→warning | ~10 | Any provider |
+No changes needed. The plugin implements `MemoryProvider`, registers once, and the core calls all lifecycle hooks, tools, and context fencing automatically.

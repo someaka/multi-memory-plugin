@@ -208,15 +208,17 @@ class MultiMemoryProvider(MemoryProvider):
             if tool_name.startswith(f"{pfx}_"):
                 return sub.handle_tool_call(tool_name, args, **kwargs)
         # Fallback: try all subs without prefix match
+        errors = []
         for sub in subs_snapshot:
             try:
                 return sub.handle_tool_call(tool_name, args, **kwargs)
             except Exception as exc:
-                logger.debug(
+                errors.append(f"{sub.name}: {exc}")
+                logger.warning(
                     "[multi-memory] fallback %s for '%s': %s",
                     sub.name, tool_name, exc,
                 )
-        return tool_error(f"No sub-provider handles tool '{tool_name}'")
+        return tool_error(f"No sub-provider handles tool '{tool_name}' — tried: {'; '.join(errors)}")
 
     # ─── Runtime sub-provider management ──────────────────────────────────
 
@@ -261,7 +263,7 @@ class MultiMemoryProvider(MemoryProvider):
             else:
                 target.shutdown()
         except Exception as exc:
-            logger.debug("[multi-memory] remove_provider shutdown %s: %s", name, exc)
+            logger.warning("[multi-memory] remove_provider shutdown %s: %s", name, exc)
         self._health.reset(name)
         logger.info("[multi-memory] removed provider '%s'", name)
         return True
@@ -275,6 +277,14 @@ class MultiMemoryProvider(MemoryProvider):
     def has_tool(self, tool_name: str) -> bool:
         """Return True if any active sub-provider handles this tool."""
         return tool_name in self.get_all_tool_names()
+
+    def health_summary(self) -> dict[str, str]:
+        """Return {backend_name: 'ok' | 'circuit_open'} for all active subs."""
+        with self._lock:
+            return {
+                sub.name: ("circuit_open" if self._health.is_open(sub.name) else "ok")
+                for sub in self._subs
+            }
 
     # ─── Optional hooks (pass-through to all active subs) ──
 
@@ -292,7 +302,7 @@ class MultiMemoryProvider(MemoryProvider):
                 self._health.record_success(f"{sub.name}.shutdown")
             except Exception as exc:
                 self._health.record_failure(f"{sub.name}.shutdown")
-                logger.debug("[multi-memory] shutdown %s: %s", sub.name, exc)
+                logger.warning("[multi-memory] shutdown %s: %s", sub.name, exc)
 
     def system_prompt_block(self) -> str:
         with self._lock:
@@ -311,7 +321,7 @@ class MultiMemoryProvider(MemoryProvider):
                    parts.append(f"[{sub.name}] {r}")
             except Exception as exc:
                 self._health.record_failure(sub.name)
-                logger.debug("[multi-memory] prefetch %s: %s", sub.name, exc)
+                logger.warning("[multi-memory] prefetch %s: %s", sub.name, exc)
         return "\n\n".join(parts)
     def queue_prefetch(self, query: str, *, session_id: str = "") -> None:
         with self._lock:
@@ -324,7 +334,7 @@ class MultiMemoryProvider(MemoryProvider):
                 self._health.record_success(sub.name)
             except Exception as exc:
                 self._health.record_failure(sub.name)
-                logger.debug("[multi-memory] queue_prefetch %s: %s", sub.name, exc)
+                logger.warning("[multi-memory] queue_prefetch %s: %s", sub.name, exc)
 
     def sync_turn(self, user_content: str, assistant_content: str, *, session_id: str = "", **kwargs: Any) -> None:
         messages = kwargs.get("messages")
@@ -338,7 +348,7 @@ class MultiMemoryProvider(MemoryProvider):
                 self._health.record_success(sub.name)
             except Exception as exc:
                 self._health.record_failure(sub.name)
-                logger.debug("[multi-memory] sync_turn %s: %s", sub.name, exc)
+                logger.warning("[multi-memory] sync_turn %s: %s", sub.name, exc)
 
     def on_turn_start(self, turn_number: int = 0, message: str = "", **kwargs: Any) -> None:
         with self._lock:
@@ -351,7 +361,7 @@ class MultiMemoryProvider(MemoryProvider):
                 self._health.record_success(sub.name)
             except Exception as exc:
                 self._health.record_failure(sub.name)
-                logger.debug("[multi-memory] on_turn_start %s: %s", sub.name, exc)
+                logger.warning("[multi-memory] on_turn_start %s: %s", sub.name, exc)
 
     def on_session_end(self, messages: list[dict]) -> None:
         with self._lock:
@@ -364,7 +374,7 @@ class MultiMemoryProvider(MemoryProvider):
                 self._health.record_success(sub.name)
             except Exception as exc:
                 self._health.record_failure(sub.name)
-                logger.debug("[multi-memory] on_session_end %s: %s", sub.name, exc)
+                logger.warning("[multi-memory] on_session_end %s: %s", sub.name, exc)
 
     def on_session_switch(self, new_session_id: str = "", *, parent_session_id: str = "", reset: bool = False, **kwargs: Any) -> None:
         if not new_session_id:
@@ -379,7 +389,7 @@ class MultiMemoryProvider(MemoryProvider):
                 self._health.record_success(sub.name)
             except Exception as exc:
                 self._health.record_failure(sub.name)
-                logger.debug("[multi-memory] on_session_switch %s: %s", sub.name, exc)
+                logger.warning("[multi-memory] on_session_switch %s: %s", sub.name, exc)
 
     def on_memory_write(self, action: str, target: str, content: str, metadata: dict[str, Any] | None = None) -> None:
         with self._lock:
@@ -392,7 +402,7 @@ class MultiMemoryProvider(MemoryProvider):
                 self._health.record_success(sub.name)
             except Exception as exc:
                 self._health.record_failure(sub.name)
-                logger.debug("[multi-memory] on_memory_write %s: %s", sub.name, exc)
+                logger.warning("[multi-memory] on_memory_write %s: %s", sub.name, exc)
 
     def on_delegation(self, task: str = "", result: str = "", *, child_session_id: str = "", **kwargs: Any) -> None:
         with self._lock:
@@ -405,7 +415,7 @@ class MultiMemoryProvider(MemoryProvider):
                 self._health.record_success(sub.name)
             except Exception as exc:
                 self._health.record_failure(sub.name)
-                logger.debug("[multi-memory] on_delegation %s: %s", sub.name, exc)
+                logger.warning("[multi-memory] on_delegation %s: %s", sub.name, exc)
 
     def on_pre_compress(self, messages: list[dict[str, Any]]) -> str:
         with self._lock:
@@ -421,7 +431,7 @@ class MultiMemoryProvider(MemoryProvider):
                 self._health.record_success(sub.name)
             except Exception as exc:
                 self._health.record_failure(sub.name)
-                logger.debug("[multi-memory] on_pre_compress %s: %s", sub.name, exc)
+                logger.warning("[multi-memory] on_pre_compress %s: %s", sub.name, exc)
         return "\n\n".join(parts) if parts else ""
 
 

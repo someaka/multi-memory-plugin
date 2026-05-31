@@ -61,9 +61,9 @@ hermes multi remove <name>   # remove a backend from config
 ## Docs
 
 - **[CONFIG.md](CONFIG.md)** — install, config formats, per-backend reference
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** — setup, tests, adding backends, architecture
 - **[AGENT.md](AGENT.md)** — instructions for AI coding assistants
 - **[CHANGELOG.md](CHANGELOG.md)** — version history
-- **[CORE-INTEGRATION-SPEC.md](CORE-INTEGRATION-SPEC.md)** — architecture and upstream design
 
 ## License
 

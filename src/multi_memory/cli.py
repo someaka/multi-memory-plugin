@@ -13,8 +13,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
-from typing import Any
 
 try:
     from hermes_cli.config import load_config, save_config
@@ -185,7 +183,7 @@ def _cmd_list(args: argparse.Namespace) -> None:
         marker = "→" if is_active else " "
         print(f"  {marker} {name:15s} {status:12s} {desc}")
 
-    print(f"\n  Use 'hermes multi add <name>' to activate a backend.\n")
+    print("\n  Use 'hermes multi add <name>' to activate a backend.\n")
 
 
 def _cmd_add(args: argparse.Namespace) -> None:
@@ -222,7 +220,7 @@ def _cmd_add(args: argparse.Namespace) -> None:
 
     save_config(config)
     print(f"\n  ✓ Added '{backend}' to active backends.")
-    print(f"  Restart Hermes to activate.\n")
+    print("  Restart Hermes to activate.\n")
 
 
 def _cmd_remove(args: argparse.Namespace) -> None:
@@ -235,7 +233,7 @@ def _cmd_remove(args: argparse.Namespace) -> None:
     config = load_config()
     memory_cfg = config.get("memory", {})
     if not memory_cfg:
-        print(f"\n  No memory config found.\n")
+        print("\n  No memory config found.\n")
         return
 
     found = False

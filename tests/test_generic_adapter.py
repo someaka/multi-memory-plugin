@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from unittest import mock
 
-import pytest
 
 from multi_memory.adapters import _GenericAdapter
 

@@ -209,7 +209,6 @@ class TestTimeoutWrapper:
 
     def test_timeout_raises(self):
         def slow():
-            import time
             time.sleep(100)
 
         with pytest.raises(TimeoutError):

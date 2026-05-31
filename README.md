@@ -13,12 +13,56 @@ provider, and one backend crashing won't take down the rest.
 
 ---
 
+## What you get
+
+**Prefix routing** — each backend owns a tool-name prefix (`mnemosyne_`,
+`holographic_`, `mem0_`, `viking_`, `brv_`, `hindsight_`, …). The model's
+tool call is routed to the matching backend by prefix. First match wins.
+
+> **Note:** config key and tool prefix can differ. ByteRover is `byterover`
+> in config but `brv_` on tools. OpenViking is `openviking` in config but
+> `viking_` on tools.
+
+**Lifecycle fanout** — `initialize`, `shutdown`, `prefetch`, `sync_turn`,
+`on_session_end`, `on_session_switch`, `on_memory_write`, `on_delegation`,
+`on_pre_compress`, and every other hook fires on all active backends. One
+backend failing doesn't block the others. Every failure is logged at
+WARNING level with the backend name and exception.
+
+**Circuit breaker** — after 3 consecutive failures a backend is skipped
+until it succeeds again. Prevents a broken backend from slowing down
+every turn.
+
+**Schema validation** — every backend's tool schemas are validated before
+registration. A backend that throws during `get_tool_schemas()` is rejected
+with a warning, not silently accepted. Matches the fork's
+schema-validation-before-registration pattern.
+
+**Runtime management** — add, remove, and query sub-providers at runtime:
+```python
+provider.add_provider(adapter)     # add a backend on the fly
+provider.remove_provider("mem0")   # shut it down and remove it
+provider.get_provider("mnemosyne") # look it up
+provider.health_summary()          # {'mnemosyne': 'ok', 'mem0': 'circuit_open'}
+```
+
+**Introspection-aware dispatch** — the adapter layer detects how each
+delegate's `on_memory_write` accepts metadata (keyword, positional, or
+legacy 3-arg) and routes accordingly. Same for `sync_turn` — detects
+whether the delegate accepts a `messages` keyword.
+
+**Close/shutdown cleanup** — `close()` handles both shutdown + connection
+cleanup. Backends like RetainDB that manage their own SQLite thread-locals
+get properly torn down.
+
+---
+
 ## Supported backends
 
 | Backend | What it is | Install | Env vars |
 |:--------|:-----------|:--------|:---------|
 | **[Mnemosyne](https://github.com/AxDSan/mnemosyne)** | Local SQLite + vector recall | Plugin at `~/.hermes/plugins/mnemosyne/` | — |
-| **Holographic** | SQLite fact store, FTS5, HRR compositional algebra | Built-in (stdlib) | — |
+| **[Holographic](https://github.com/NousResearch/hermes-agent/tree/main/plugins/memory/holographic)** | SQLite fact store, FTS5, HRR compositional algebra | Built-in (stdlib) | — |
 | **[Mem0](https://mem0.ai)** | Cloud semantic search with auto-extraction | `pip install mem0ai` | `MEM0_API_KEY` |
 | **[Honcho](https://app.honcho.dev)** | Hosted cross-session user modeling | `pip install honcho-ai` | `HONCHO_API_KEY` `HONCHO_APP_ID` |
 | **[OpenViking](https://github.com/volcengine/OpenViking)** | Context database with filesystem-style hierarchy | `pip install openviking` + server | `OPENVIKING_ENDPOINT` |
@@ -62,31 +106,14 @@ own setup — see the table above for install commands and env vars.
 Model calls: mnemosyne_recall(...)   ──┐
 Model calls: viking_search(...)      ──┤
 Model calls: brv_query(...)          ──┼──▶  MultiMemoryProvider
-Model calls: supermemory_store(...)  ──┤         │
-                                       │    ┌────┴────┐
-                                       │    ▼         ▼
-                                       │ Mnemosyne  OpenViking  ...
-                                       │    │         │
-                                       │    ▼         ▼
-                                       │  SQLite    Viking DB
+Model calls: holographic_store(...)  ──┤         │
+Model calls: supermemory_store(...)  ──┘    ┌────┴────┐
+                                            ▼         ▼
+                                       Mnemosyne  OpenViking  ...
+                                            │         │
+                                            ▼         ▼
+                                          SQLite    Viking DB
 ```
-
-**Prefix routing** — each backend owns a tool-name prefix (`mnemosyne_`,
-`mem0_`, `viking_`, `brv_`, `hindsight_`, …). The model's tool call is
-routed to the matching backend by prefix. First match wins.
-
-> **Note:** config key and tool prefix can differ. ByteRover is `byterover`
-> in config but `brv_` on tools. OpenViking is `openviking` in config but
-> `viking_` on tools.
-
-**Lifecycle fanout** — `initialize`, `shutdown`, `prefetch`, `sync_turn`,
-`on_session_end`, and every other hook fires on all active backends. One
-backend failing doesn't block the others. Every failure is logged at
-WARNING level with the backend name and exception.
-
-**Circuit breaker** — after 3 consecutive failures a backend is skipped
-until it succeeds again. Prevents a broken backend from slowing down
-every turn.
 
 ---
 

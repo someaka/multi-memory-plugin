@@ -681,6 +681,142 @@ class TestMultiMemoryProviderEdgeCases:
             assert p._subs == []  # fallback: empty subs on config failure
 
 
+# ── Runtime sub-provider management ──────────────────────────────────────
+
+
+class TestRuntimeManagement:
+    """Tests for add_provider, remove_provider, get_provider, providers property."""
+
+    def test_providers_property(self, provider):
+        """providers property returns list of sub-provider names."""
+        names = provider.providers
+        assert "holographic" in names
+        assert "mnemosyne" in names
+
+    def test_get_provider_found(self, provider):
+        """get_provider returns the sub-provider when found."""
+        sub = provider.get_provider("holographic")
+        assert sub is not None
+        assert sub.name == "holographic"
+
+    def test_get_provider_not_found(self, provider):
+        """get_provider returns None when not found."""
+        assert provider.get_provider("nonexistent") is None
+
+    def test_add_provider_new(self, provider):
+        """add_provider adds a new sub-provider."""
+        new_sub = mock.MagicMock()
+        new_sub.name = "new_backend"
+        assert provider.add_provider(new_sub) is True
+        assert "new_backend" in provider.providers
+        assert len(provider._subs) == 3
+
+    def test_add_provider_duplicate(self, provider):
+        """add_provider rejects duplicate names."""
+        new_sub = mock.MagicMock()
+        new_sub.name = "holographic"  # already exists
+        assert provider.add_provider(new_sub) is False
+        assert len(provider._subs) == 2
+
+    def test_remove_provider_found(self, provider):
+        """remove_provider removes and shuts down a sub-provider."""
+        assert provider.remove_provider("holographic") is True
+        assert "holographic" not in provider.providers
+        assert len(provider._subs) == 1
+        # Should have called close() or shutdown() on the removed sub
+        holo = mock.MagicMock()
+        holo.name = "holographic"
+        # Can't assert on the original mock since it's been removed,
+        # but we can verify it's gone
+        assert provider.get_provider("holographic") is None
+
+    def test_remove_provider_not_found(self, provider):
+        """remove_provider returns False when name not found."""
+        assert provider.remove_provider("nonexistent") is False
+        assert len(provider._subs) == 2
+
+    def test_remove_provider_calls_close(self, provider):
+        """remove_provider calls close() when available, else shutdown()."""
+        sub_with_close = mock.MagicMock()
+        sub_with_close.name = "closeable"
+        sub_with_close.close = mock.MagicMock()
+        provider._subs.append(sub_with_close)
+
+        provider.remove_provider("closeable")
+        sub_with_close.close.assert_called_once()
+
+    def test_remove_provider_calls_shutdown_when_no_close(self, provider):
+        """remove_provider calls shutdown() when close() not available."""
+        sub = mock.MagicMock()
+        sub.name = "shutdown_only"
+        # Remove close attribute to simulate no close() method
+        del sub.close
+        provider._subs.append(sub)
+
+        provider.remove_provider("shutdown_only")
+        sub.shutdown.assert_called_once()
+
+    def test_remove_provider_cleans_health(self, provider):
+        """remove_provider resets health tracking for the removed provider."""
+        # Trip the circuit (default limit is 5)
+        for _ in range(5):
+            provider._health.record_failure("holographic")
+        assert provider._health.is_open("holographic")
+
+        provider.remove_provider("holographic")
+        # Health counter should be reset
+        assert provider._health.failures("holographic") == 0
+
+    def test_add_then_remove_roundtrip(self, provider):
+        """Full add-then-remove roundtrip works."""
+        new_sub = mock.MagicMock()
+        new_sub.name = "roundtrip"
+        assert provider.add_provider(new_sub) is True
+        assert "roundtrip" in provider.providers
+        assert provider.remove_provider("roundtrip") is True
+        assert "roundtrip" not in provider.providers
+        assert len(provider._subs) == 2
+
+    def test_get_all_tool_names(self, provider):
+        """get_all_tool_names returns set of all tool name strings."""
+        names = provider.get_all_tool_names()
+        assert isinstance(names, set)
+        assert "holographic_fact_store" in names
+        assert "mnemosyne_search" in names
+
+    def test_has_tool_true(self, provider):
+        """has_tool returns True for existing tools."""
+        assert provider.has_tool("holographic_fact_store") is True
+        assert provider.has_tool("mnemosyne_search") is True
+
+    def test_has_tool_false(self, provider):
+        """has_tool returns False for nonexistent tools."""
+        assert provider.has_tool("nonexistent_tool") is False
+
+    def test_on_session_switch_empty_guard(self, provider):
+        """on_session_switch does nothing when session_id is empty."""
+        provider.on_session_switch("")
+        # Subs should NOT have been called
+        for sub in provider._subs:
+            sub.on_session_switch.assert_not_called()
+
+    def test_on_session_switch_valid_calls_subs(self, provider):
+        """on_session_switch dispatches to subs when session_id is non-empty."""
+        provider.on_session_switch("new-sid")
+        for sub in provider._subs:
+            sub.on_session_switch.assert_called_once()
+
+    def test_remove_then_tool_schemas_updated(self, provider):
+        """After removing a provider, its tools disappear from schemas."""
+        all_names_before = {s["name"] for s in provider.get_tool_schemas()}
+        assert "holographic_fact_store" in all_names_before
+
+        provider.remove_provider("holographic")
+        all_names_after = {s["name"] for s in provider.get_tool_schemas()}
+        assert "holographic_fact_store" not in all_names_after
+        assert "mnemosyne_search" in all_names_after
+
+
 # ── _SubProviderAdapter delegation tests (mock-based, no real backends) ───────
 
 

@@ -156,6 +156,12 @@ class MultiMemoryProvider(MemoryProvider):
     def name(self) -> str:
         return "multi"
 
+    @property
+    def providers(self) -> list[str]:
+        """Return names of all active sub-providers."""
+        with self._lock:
+            return [s.name for s in self._subs]
+
     def is_available(self) -> bool:
         return bool(self._subs)
 
@@ -211,6 +217,64 @@ class MultiMemoryProvider(MemoryProvider):
                     sub.name, tool_name, exc,
                 )
         return tool_error(f"No sub-provider handles tool '{tool_name}'")
+
+    # ─── Runtime sub-provider management ──────────────────────────────────
+
+    def get_provider(self, name: str) -> _SubProviderAdapter | None:
+        """Return a sub-provider by name, or None if not found."""
+        with self._lock:
+            for sub in self._subs:
+                if sub.name == name:
+                    return sub
+        return None
+
+    def add_provider(self, adapter: _SubProviderAdapter) -> bool:
+        """Add a sub-provider at runtime. Returns True if added, False if duplicate."""
+        with self._lock:
+            if any(s.name == adapter.name for s in self._subs):
+                logger.warning("[multi-memory] add_provider: '%s' already active", adapter.name)
+                return False
+            self._subs.append(adapter)
+            self._health.reset(adapter.name)
+        logger.info("[multi-memory] added provider '%s'", adapter.name)
+        return True
+
+    def remove_provider(self, name: str) -> bool:
+        """Shutdown and remove a sub-provider by name. Returns True if removed."""
+        with self._lock:
+            target = None
+            remaining = []
+            for sub in self._subs:
+                if sub.name == name:
+                    target = sub
+                else:
+                    remaining.append(sub)
+            if target is None:
+                logger.warning("[multi-memory] remove_provider: '%s' not found", name)
+                return False
+            self._subs = remaining
+        # Shutdown outside lock
+        try:
+            close_fn = getattr(target, 'close', None)
+            if callable(close_fn):
+                close_fn()
+            else:
+                target.shutdown()
+        except Exception as exc:
+            logger.debug("[multi-memory] remove_provider shutdown %s: %s", name, exc)
+        self._health.reset(name)
+        logger.info("[multi-memory] removed provider '%s'", name)
+        return True
+
+    # ─── Tool introspection ───────────────────────────────────────────────
+
+    def get_all_tool_names(self) -> set[str]:
+        """Return the set of all tool names from active sub-providers."""
+        return {s["name"] for s in self.get_tool_schemas()}
+
+    def has_tool(self, tool_name: str) -> bool:
+        """Return True if any active sub-provider handles this tool."""
+        return tool_name in self.get_all_tool_names()
 
     # ─── Optional hooks (pass-through to all active subs) ──
 
@@ -303,6 +367,8 @@ class MultiMemoryProvider(MemoryProvider):
                 logger.debug("[multi-memory] on_session_end %s: %s", sub.name, exc)
 
     def on_session_switch(self, new_session_id: str = "", *, parent_session_id: str = "", reset: bool = False, **kwargs: Any) -> None:
+        if not new_session_id:
+            return
         with self._lock:
             subs_snapshot = list(self._subs)
         for sub in subs_snapshot:

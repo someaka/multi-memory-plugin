@@ -183,6 +183,22 @@ class _HolographicAdapter(_SubProviderAdapter):
     CLASS      = "HolographicMemoryProvider"
     PREFIX     = "holographic"
 
+    def get_tool_schemas(self) -> list[dict]:
+        # Holographic tools may be self-prefixed ("holographic_store") or
+        # unprefixed ("fact_store") depending on version — strip+re-add to
+        # guarantee exactly one prefix.
+        raw = self._delegate.get_tool_schemas()
+        pfx = f"{self.PREFIX}_"
+        stripped = [
+            {**s, "name": s["name"][len(pfx):] if s["name"].startswith(pfx) else s["name"]}
+            for s in raw
+        ]
+        return [{**s, "name": f"{self.PREFIX}_{s['name']}"} for s in stripped]
+
+    def handle_tool_call(self, tool_name: str, args: dict, **kwargs: Any) -> str:
+        # Holographic expects full prefixed names — don't strip.
+        return self._delegate.handle_tool_call(tool_name, args, **kwargs)
+
 
 class _HonchoAdapter(_SubProviderAdapter):
     CONFIG_KEY = "honcho"

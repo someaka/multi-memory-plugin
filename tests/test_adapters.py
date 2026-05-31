@@ -970,22 +970,43 @@ class TestNoDoublePrefix:
         )
 
     def test_holographic_strips_prefix_normally(self):
-        """Holographic has unprefixed raw names — base class prefix+strip works."""
+        """Holographic adapter strips then re-adds prefix for exact one-prefix guarantee."""
         mock_delegate = mock.MagicMock()
         mock_delegate.name = "holographic"
         mock_delegate.get_tool_schemas.return_value = [
-            {"name": "fact_store", "description": "Store"},
+            {"name": "holographic_store", "description": "Store"},
+            {"name": "holographic_feedback", "description": "Feedback"},
         ]
         mock_delegate.handle_tool_call.return_value = '{"ok": true}'
         mock_cls = mock.MagicMock(return_value=mock_delegate)
         with mock.patch("multi_memory.adapters._try_import", return_value=mock_cls):
             adapter = _HolographicAdapter()
         schemas = adapter.get_tool_schemas()
-        assert schemas[0]["name"] == "holographic_fact_store"
-        adapter.handle_tool_call("holographic_fact_store", {"action": "list"})
+        names = [s["name"] for s in schemas]
+        assert names == ["holographic_store", "holographic_feedback"]
+        # handle_tool_call passes full prefixed name (plugin accepts both forms)
+        adapter.handle_tool_call("holographic_store", {"action": "list"})
         mock_delegate.handle_tool_call.assert_called_once_with(
-            "fact_store", {"action": "list"}
+            "holographic_store", {"action": "list"}
         )
+
+    def test_holographic_no_double_prefix_when_already_prefixed(self):
+        """If holographic plugin returns already-prefixed names ('holographic_store'),
+        the adapter must NOT produce 'holographic_holographic_store'."""
+        mock_delegate = mock.MagicMock()
+        mock_delegate.name = "holographic"
+        mock_delegate.get_tool_schemas.return_value = [
+            {"name": "holographic_store", "description": "Store"},
+            {"name": "holographic_feedback", "description": "Feedback"},
+        ]
+        mock_cls = mock.MagicMock(return_value=mock_delegate)
+        with mock.patch("multi_memory.adapters._try_import", return_value=mock_cls):
+            adapter = _HolographicAdapter()
+        schemas = adapter.get_tool_schemas()
+        names = [s["name"] for s in schemas]
+        assert names == ["holographic_store", "holographic_feedback"]
+        # Must NOT be "holographic_holographic_store"
+        assert "holographic_holographic_store" not in names
 
 
 @requires_holographic

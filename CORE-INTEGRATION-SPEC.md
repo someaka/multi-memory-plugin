@@ -1,69 +1,31 @@
-# Multi-Memory Plugin: Core Integration Spec
+# Multi-Memory Plugin: What to Propose Upstream
 
-## The Design
+## Context
 
-The upstream MemoryManager has a **one-external-provider limit**. This is deliberate. The multi-memory plugin exists to be that one provider — it manages multiple backends internally so the core doesn't have to.
+The upstream MemoryManager allows one external provider. This is deliberate. The multi-memory plugin is that one provider. It manages multiple backends internally — thread safety, circuit breaker, health tracking, namespace validation are all plugin-internal concerns.
 
-The plugin works with upstream as-is. No core changes are required.
+## Proposals (if worth making at all)
 
-## What Could Be Proposed Upstream (Optional)
+### 1. `remove_provider()` (~25 lines)
 
-Two improvements that benefit ALL providers, not just the plugin:
+You can `add_provider()` but never remove. For long-running agents (gateway, cron), hot-swapping a provider requires a restart.
 
-### 1. Thread Safety (~15 lines)
+This is genuinely useful for any provider, not just the plugin.
 
-The MemoryManager has no lock. In gateway mode, `add_provider()` and lifecycle hooks run concurrently — race condition on `_providers` list and `_tool_to_provider` dict.
+### 2. `logger.debug` → `logger.warning` in lifecycle hooks (~10 lines)
 
-```python
-import threading
+The core swallows provider exceptions at debug level. If Honcho or Mem0 fails, nobody knows unless debug logging is on.
 
-class MemoryManager:
-    def __init__(self):
-        self._lock = threading.RLock()
+This benefits every provider.
 
-    def add_provider(self, provider):
-        with self._lock:
-            # existing logic
-```
+## Not Proposing
 
-**Why upstream benefits:** Any provider (Honcho, Mem0, Mnemosyne) running in gateway mode has the same race. This is a correctness fix, not a feature request.
-
-### 2. `remove_provider()` (~25 lines)
-
-You can `add_provider()` but never remove. Long-running agents (gateway, cron) can't hot-swap.
-
-**Why upstream benefits:** Completes the API. Any long-running agent needs this.
-
-### 3. `logger.debug` → `logger.warning` in lifecycle hooks (~10 lines)
-
-The core's lifecycle hooks swallow exceptions at debug level. If a provider fails, nobody knows.
-
-**Why upstream benefits:** All providers fail silently today.
-
-**Total: ~50 lines, backwards-compatible, no API changes.**
-
----
-
-## What the Plugin Adds (Not Core's Problem)
-
-| Feature | Why Plugin |
-|---|---|
-| 9 backend adapters | Core doesn't know about specific backends |
-| Circuit breaker / health tracking | Proactive failure detection for multi-backend |
-| Tool budget warnings | Multiple backends = more tools |
-| Namespace validation | Prefix collision risk |
-| Backend discovery + loading | Scan for installed backends |
-| Config normalization (3 formats) | Multiple config conventions |
-| close() vs shutdown() | Connection pool cleanup |
-| Holographic double-prefix fix | Adapter logic |
-| Runtime add/remove sub-providers | Plugin manages its own internal list |
-
----
+- **Thread safety (RLock)** — no race condition with one provider. The plugin manages its own lock internally for sub-providers. Not upstream's problem.
+- **Multi-provider support** — the one-provider limit is the design. The plugin exists because of it.
 
 ## Summary
 
-| Category | Count |
-|---|---|
-| Core changes REQUIRED | **0** |
-| Core improvements worth proposing | **3** (~50 lines total) |
-| Plugin-only features | **9+** |
+| Item | Lines | Upstream Benefit |
+|---|---|---|
+| `remove_provider()` | ~25 | Any long-running agent |
+| Log levels debug→warning | ~10 | Any provider |

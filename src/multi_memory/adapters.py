@@ -109,6 +109,13 @@ class _SubProviderAdapter:
     def on_pre_compress(self, messages: list[dict[str, Any]]) -> str:
         return self._delegate.on_pre_compress(messages)
 
+    def close(self) -> None:
+        """Close underlying connections.  Override in subclasses that manage
+        their own connection pools (e.g. RetainDB SQLite thread-locals)."""
+        close_fn = getattr(self._delegate, 'close', None)
+        if callable(close_fn):
+            close_fn()
+
 
 class _MnemosyneAdapter(_SubProviderAdapter):
     CONFIG_KEY = "mnemosyne"
@@ -246,6 +253,15 @@ class _RetainDBAdapter(_SubProviderAdapter):
     MODULE     = "plugins.memory.retaindb"
     CLASS      = "RetainDBMemoryProvider"
     PREFIX     = "retaindb"
+
+    def close(self) -> None:
+        """Shutdown writer threads and close SQLite thread-local connections."""
+        close_fn = getattr(self._delegate, 'close', None)
+        if callable(close_fn):
+            close_fn()
+        else:
+            # Fallback: just shutdown if close() not available
+            self._delegate.shutdown()
 
     def get_tool_schemas(self) -> list[dict]:
         # RetainDB tools are self-prefixed ("retaindb_profile") — strip+re-add.

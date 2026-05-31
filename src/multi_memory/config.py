@@ -1,6 +1,6 @@
 """Config helpers for loading enabled backends from ~/.hermes/config.yaml.
 
-Supports both config shapes:
+Supports three config shapes:
 
 1. PLAN spec (friendly)::
 
@@ -17,6 +17,11 @@ Supports both config shapes:
       providers:
         - "mnemosyne"
         - "mem0"
+
+3. Legacy single-provider string (backward compat)::
+
+    memory:
+      provider: "mem0"
 """
 from __future__ import annotations
 
@@ -42,7 +47,31 @@ def load_multi_config() -> dict[str, Any]:
 
 
 def get_enabled_backends(config: dict | None = None) -> list[str]:
-    """Return list of config keys that are enabled in multi.backends."""
+    """Return list of enabled backend config keys.
+
+    Reads from ``multi.backends`` dict (PLAN spec), then ``memory.providers``
+    list (INVESTIGATION-C canonical), then falls back to legacy
+    ``memory.provider`` string.  First non-empty wins.
+    """
     cfg = config or load_multi_config()
-    backends = (cfg.get("multi") or {}).get("backends", {})
-    return [k for k, v in backends.items() if v]
+
+    # 1. PLAN spec: multi.backends dict
+    #    Accept both top-level {"multi": {"backends": ...}} (tests / standalone)
+    #    and nested {"memory": {"multi": {"backends": ...}}} (real config.yaml).
+    memory_cfg = cfg.get("memory") or {}
+    multi_cfg = cfg.get("multi") or memory_cfg.get("multi") or {}
+    backends = multi_cfg.get("backends") or {}
+    if isinstance(backends, dict) and backends:
+        return [k for k, v in backends.items() if v not in (False, None, 0, "0", "false", "False", "no")]
+
+    # 2. INVESTIGATION-C canonical: providers list
+    providers = memory_cfg.get("providers") or []
+    if isinstance(providers, list) and providers:
+        return [p for p in providers if p]
+
+    # 3. Legacy: single provider string
+    single = memory_cfg.get("provider") or ""
+    if isinstance(single, str) and single and single != "multi":
+        return [single]
+
+    return []

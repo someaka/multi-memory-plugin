@@ -364,7 +364,10 @@ class TestLifecycleHooks:
         """shutdown() calls sub-providers in reversed order."""
         call_order = []
         for sub in provider._subs:
-            sub.shutdown = lambda ns=sub.name: call_order.append(ns)
+            # shutdown() prefers close() over shutdown() — mock both
+            ns = sub.name
+            sub.close = lambda ns=ns: call_order.append(ns)
+            sub.shutdown = lambda ns=ns: call_order.append(ns)
         provider.shutdown()
         expected = [s.name for s in reversed(provider._subs)]
         assert call_order == expected
@@ -379,6 +382,8 @@ class TestLifecycleHooks:
                     if idx % 2 == 0:
                         raise RuntimeError(f"shutdown fail {idx}")
                 return fn
+            # shutdown() prefers close() — mock both to track calls
+            sub.close = make_shutdown(i)
             sub.shutdown = make_shutdown(i)
         provider.shutdown()  # Should not raise
         assert len(flags) == len(provider._subs)
@@ -1184,3 +1189,208 @@ class TestCoverageGaps:
         for r in results:
             if r["config_key"] != "mnemosyne":
                 assert r["installed"] is False
+
+
+# ── Ported from fork: thread safety, schema failure protection, close() ──
+
+
+class TestThreadSafety:
+    """MultiMemoryProvider lifecycle dispatch is thread-safe (RLock)."""
+
+    def test_lock_exists(self):
+        """MultiMemoryProvider.__init__ creates _lock (threading.RLock)."""
+        import threading
+        with mock.patch.object(MultiMemoryProvider, '_load_config'):
+            with mock.patch.object(MultiMemoryProvider, '_validate_namespaces'):
+                prov = MultiMemoryProvider()
+        assert isinstance(prov._lock, type(threading.RLock()))
+
+    def test_concurrent_lifecycle_dispatch(self):
+        """Multiple threads calling lifecycle hooks don't crash."""
+        import threading
+        with mock.patch.object(MultiMemoryProvider, '_load_config'):
+            with mock.patch.object(MultiMemoryProvider, '_validate_namespaces'):
+                prov = MultiMemoryProvider()
+
+        mock_sub = mock.MagicMock()
+        mock_sub.name = "fake"
+        mock_sub.is_available.return_value = True
+        mock_sub.get_tool_schemas.return_value = []
+        prov._subs = [mock_sub]
+
+        errors = []
+
+        def call_lifecycle():
+            try:
+                prov.on_turn_start(1, "hello")
+                prov.sync_turn("user", "assistant")
+                prov.prefetch("query")
+                prov.get_tool_schemas()
+            except Exception as e:
+                errors.append(e)
+
+        threads = [threading.Thread(target=call_lifecycle) for _ in range(10)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        assert errors == []
+
+    def test_handle_tool_call_snapshot(self):
+        """handle_tool_call takes a snapshot under lock, dispatches outside."""
+        with mock.patch.object(MultiMemoryProvider, '_load_config'):
+            with mock.patch.object(MultiMemoryProvider, '_validate_namespaces'):
+                prov = MultiMemoryProvider()
+
+        mock_sub = mock.MagicMock()
+        mock_sub.name = "fake"
+        type(mock_sub).PREFIX = mock.PropertyMock(return_value="fake")
+        mock_sub.handle_tool_call.return_value = '{"result": "ok"}'
+        prov._subs = [mock_sub]
+        prov._tool_to_provider = {"fake_search": mock_sub}
+
+        result = prov.handle_tool_call("fake_search", {"query": "test"})
+        assert "ok" in result
+
+
+class TestSchemaFailureProtection:
+    """get_tool_schemas() wraps each sub-adapter in try/except (fixes #9948)."""
+
+    def test_broken_sub_skipped_others_continue(self):
+        """A sub-adapter that raises from get_tool_schemas is skipped."""
+        with mock.patch.object(MultiMemoryProvider, '_load_config'):
+            with mock.patch.object(MultiMemoryProvider, '_validate_namespaces'):
+                prov = MultiMemoryProvider()
+
+        good_sub = mock.MagicMock()
+        good_sub.name = "good"
+        good_sub.get_tool_schemas.return_value = [{"name": "good_search"}]
+
+        bad_sub = mock.MagicMock()
+        bad_sub.name = "bad"
+        bad_sub.get_tool_schemas.side_effect = RuntimeError("schema boom")
+
+        prov._subs = [bad_sub, good_sub]
+
+        schemas = prov.get_tool_schemas()
+        assert len(schemas) == 1
+        assert schemas[0]["name"] == "good_search"
+
+    def test_all_subs_broken_returns_empty(self):
+        """If all sub-adapters fail, returns empty list (not an exception)."""
+        with mock.patch.object(MultiMemoryProvider, '_load_config'):
+            with mock.patch.object(MultiMemoryProvider, '_validate_namespaces'):
+                prov = MultiMemoryProvider()
+
+        broken = mock.MagicMock()
+        broken.name = "broken"
+        broken.get_tool_schemas.side_effect = RuntimeError("boom")
+
+        prov._subs = [broken]
+        schemas = prov.get_tool_schemas()
+        assert schemas == []
+
+    def test_schema_failure_records_health(self):
+        """A failing sub-adapter's health is recorded as a failure."""
+        with mock.patch.object(MultiMemoryProvider, '_load_config'):
+            with mock.patch.object(MultiMemoryProvider, '_validate_namespaces'):
+                prov = MultiMemoryProvider()
+
+        broken = mock.MagicMock()
+        broken.name = "broken"
+        broken.get_tool_schemas.side_effect = RuntimeError("boom")
+
+        prov._subs = [broken]
+        prov.get_tool_schemas()
+        assert prov._health.failures("broken") >= 1
+
+
+class TestCloseMethod:
+    """_SubProviderAdapter.close() delegates to delegate.close() if available."""
+
+    def test_base_close_calls_delegate_close(self):
+        """Base adapter delegates close() when the real provider has it."""
+        adapter = object.__new__(_SubProviderAdapter)
+        mock_delegate = mock.MagicMock()
+        mock_delegate.close = mock.MagicMock()
+        adapter._delegate = mock_delegate
+
+        adapter.close()
+        mock_delegate.close.assert_called_once()
+
+    def test_base_close_no_delegate_close(self):
+        """Base adapter does nothing when delegate has no close()."""
+        adapter = object.__new__(_SubProviderAdapter)
+        mock_delegate = mock.MagicMock(spec=[])  # no close attribute
+        adapter._delegate = mock_delegate
+
+        adapter.close()  # should not raise
+
+    def test_retaindb_close_calls_delegate_close(self):
+        """_RetainDBAdapter.close() delegates to delegate.close()."""
+        adapter = object.__new__(_RetainDBAdapter)
+        mock_delegate = mock.MagicMock()
+        mock_delegate.close = mock.MagicMock()
+        adapter._delegate = mock_delegate
+
+        adapter.close()
+        mock_delegate.close.assert_called_once()
+
+    def test_retaindb_close_falls_back_to_shutdown(self):
+        """_RetainDBAdapter.close() falls back to shutdown() when no close()."""
+        adapter = object.__new__(_RetainDBAdapter)
+        mock_delegate = mock.MagicMock(spec=['shutdown'])
+        adapter._delegate = mock_delegate
+
+        adapter.close()
+        mock_delegate.shutdown.assert_called_once()
+
+    def test_shutdown_prefers_close(self):
+        """MultiMemoryProvider.shutdown() prefers close() over shutdown()."""
+        with mock.patch.object(MultiMemoryProvider, '_load_config'):
+            with mock.patch.object(MultiMemoryProvider, '_validate_namespaces'):
+                prov = MultiMemoryProvider()
+
+        mock_sub = mock.MagicMock()
+        mock_sub.name = "test"
+        mock_sub.close = mock.MagicMock()
+        prov._subs = [mock_sub]
+
+        prov.shutdown()
+        mock_sub.close.assert_called_once()
+
+
+class TestLegacyConfigInGetEnabledBackends:
+    """get_enabled_backends reads legacy memory.provider string."""
+
+    def test_legacy_single_provider(self):
+        from multi_memory.config import get_enabled_backends
+        cfg = {"memory": {"provider": "mem0"}}
+        result = get_enabled_backends(cfg)
+        assert result == ["mem0"]
+
+    def test_legacy_provider_multi_skipped(self):
+        """memory.provider: 'multi' is the plugin itself, not a backend."""
+        from multi_memory.config import get_enabled_backends
+        cfg = {"memory": {"provider": "multi"}}
+        result = get_enabled_backends(cfg)
+        assert result == []
+
+    def test_providers_list_takes_precedence(self):
+        from multi_memory.config import get_enabled_backends
+        cfg = {"memory": {"provider": "mem0", "providers": ["holographic", "honcho"]}}
+        result = get_enabled_backends(cfg)
+        assert result == ["holographic", "honcho"]
+
+    def test_multi_backends_takes_precedence_over_all(self):
+        from multi_memory.config import get_enabled_backends
+        cfg = {"memory": {"provider": "mem0", "providers": ["a"], "multi": {"backends": {"b": True}}}}
+        result = get_enabled_backends(cfg)
+        assert result == ["b"]
+
+    def test_nested_memory_multi_backends(self):
+        from multi_memory.config import get_enabled_backends
+        cfg = {"memory": {"multi": {"backends": {"mnemosyne": {}, "mem0": {}}}}}
+        result = get_enabled_backends(cfg)
+        assert "mnemosyne" in result
+        assert "mem0" in result

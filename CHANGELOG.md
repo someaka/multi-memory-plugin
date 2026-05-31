@@ -5,6 +5,25 @@ All notable changes to the multi-memory plugin will be documented in this file.
 The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] — 2026-05-31
+
+### Added
+- **Thread safety** — `MultiMemoryProvider` lifecycle dispatch is now protected by
+  `threading.RLock`. All methods snapshot the sub-provider list under the lock
+  before dispatching, preventing crashes in concurrent gateway mode.
+- **Schema failure protection** — `get_tool_schemas()` wraps each sub-adapter in
+  try/except. A broken backend's schemas are skipped (with health failure recorded)
+  instead of crashing all memory tools (fixes #9948 pattern).
+- **RetainDB `close()` delegation** — `_RetainDBAdapter` and base `_SubProviderAdapter`
+  now delegate `close()` for proper SQLite thread-local connection cleanup.
+  `MultiMemoryProvider.shutdown()` prefers `close()` over `shutdown()`.
+- **Legacy config format** — `config.py:get_enabled_backends()` now reads
+  `memory.provider` string (single-provider) in addition to `memory.providers` list
+  and `multi.backends` dict. Config priority: `multi.backends` > `providers` list >
+  `provider` string.
+- 16 new tests covering thread safety, schema failure protection, close() delegation,
+  and legacy config format.
+
 ## [0.4.0] — 2026-05-29
 
 ### Added

@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 from typing import Any
 
 import yaml
@@ -115,12 +116,17 @@ class MultiMemoryProvider(MemoryProvider):
     No core patches are required — the ``register(ctx)`` contract + ABC are
     sufficient for this to sit alongside any other ``MemoryProvider`` subclass
     in Hermes's builtin registry.
+
+    Thread-safe: all lifecycle dispatch and sub-list access are protected
+    by ``_lock`` (``threading.RLock``).  This matters in gateway mode where
+    multiple concurrent requests may invoke lifecycle hooks simultaneously.
     """
 
     def __init__(self) -> None:
         self._subs: list[_SubProviderAdapter] = []
         self._tool_budget = ToolBudgetWarning()
         self._health = HealthTracker()
+        self._lock = threading.RLock()
         self._load_config()
         self._validate_namespaces()
 
@@ -166,25 +172,37 @@ class MultiMemoryProvider(MemoryProvider):
 
     def get_tool_schemas(self) -> list[dict]:
         """Merge schemas: first-seen wins by tool name."""
-        schemas, seen = [], set()
-        for sub in self._subs:
-            for raw in sub.get_tool_schemas():
-                name = raw.get("name", "")
-                if name and name not in seen:
-                    schemas.append(raw)
-                    seen.add(name)
-        self._tool_budget.check(schemas)
-        return schemas
+        with self._lock:
+            schemas, seen = [], set()
+            for sub in self._subs:
+                try:
+                    sub_schemas = sub.get_tool_schemas()
+                except Exception as exc:
+                    logger.warning(
+                        "[multi-memory] %s get_tool_schemas() failed: %s — skipping",
+                        sub.name, exc,
+                    )
+                    self._health.record_failure(sub.name)
+                    continue
+                for raw in sub_schemas:
+                    name = raw.get("name", "")
+                    if name and name not in seen:
+                        schemas.append(raw)
+                        seen.add(name)
+            self._tool_budget.check(schemas)
+            return schemas
 
     def handle_tool_call(self, tool_name: str, args: dict, **kwargs: Any) -> str:
+        with self._lock:
+            subs_snapshot = list(self._subs)
         # Match by adapter PREFIX (not sub.name) — handles cases where
         # the config key differs from the tool prefix (e.g. ByteRover: brv_).
-        for sub in self._subs:
+        for sub in subs_snapshot:
             pfx = getattr(type(sub), 'PREFIX', '') or sub.name
             if tool_name.startswith(f"{pfx}_"):
                 return sub.handle_tool_call(tool_name, args, **kwargs)
         # Fallback: try all subs without prefix match
-        for sub in self._subs:
+        for sub in subs_snapshot:
             try:
                 return sub.handle_tool_call(tool_name, args, **kwargs)
             except Exception as exc:
@@ -197,32 +215,44 @@ class MultiMemoryProvider(MemoryProvider):
     # ─── Optional hooks (pass-through to all active subs) ──
 
     def shutdown(self) -> None:
-        for sub in reversed(self._subs):
+        with self._lock:
+            subs_snapshot = list(reversed(self._subs))
+        for sub in subs_snapshot:
             try:
-                sub.shutdown()
+                # Prefer close() which handles both shutdown + connection cleanup
+                close_fn = getattr(sub, 'close', None)
+                if callable(close_fn):
+                    close_fn()
+                else:
+                    sub.shutdown()
                 self._health.record_success(f"{sub.name}.shutdown")
             except Exception as exc:
                 self._health.record_failure(f"{sub.name}.shutdown")
                 logger.debug("[multi-memory] shutdown %s: %s", sub.name, exc)
 
     def system_prompt_block(self) -> str:
-        parts = [b for s in self._subs if (b := s.system_prompt_block())]
+        with self._lock:
+            subs_snapshot = list(self._subs)
+        parts = [b for s in subs_snapshot if (b := s.system_prompt_block())]
         return "\n\n".join(parts) if parts else ""
 
     def prefetch(self, query: str, *, session_id: str = "") -> str:
+        with self._lock:
+            subs_snapshot = list(self._subs)
         parts = []
-        for sub in self._subs:
+        for sub in subs_snapshot:
             try:
                 r = sub.prefetch(query, session_id=session_id)
                 if r:
-                    parts.append(f"[{sub.name}] {r}")
+                   parts.append(f"[{sub.name}] {r}")
             except Exception as exc:
                 self._health.record_failure(sub.name)
                 logger.debug("[multi-memory] prefetch %s: %s", sub.name, exc)
         return "\n\n".join(parts)
-
     def queue_prefetch(self, query: str, *, session_id: str = "") -> None:
-        for sub in self._subs:
+        with self._lock:
+            subs_snapshot = list(self._subs)
+        for sub in subs_snapshot:
             if self._health.is_open(sub.name):
                 continue
             try:
@@ -233,7 +263,9 @@ class MultiMemoryProvider(MemoryProvider):
                 logger.debug("[multi-memory] queue_prefetch %s: %s", sub.name, exc)
 
     def sync_turn(self, user_content: str, assistant_content: str, *, session_id: str = "") -> None:
-        for sub in self._subs:
+        with self._lock:
+            subs_snapshot = list(self._subs)
+        for sub in subs_snapshot:
             if self._health.is_open(sub.name):
                 continue
             try:
@@ -244,7 +276,9 @@ class MultiMemoryProvider(MemoryProvider):
                 logger.debug("[multi-memory] sync_turn %s: %s", sub.name, exc)
 
     def on_turn_start(self, turn_number: int = 0, message: str = "", **kwargs: Any) -> None:
-        for sub in self._subs:
+        with self._lock:
+            subs_snapshot = list(self._subs)
+        for sub in subs_snapshot:
             if self._health.is_open(sub.name):
                 continue
             try:
@@ -255,7 +289,9 @@ class MultiMemoryProvider(MemoryProvider):
                 logger.debug("[multi-memory] on_turn_start %s: %s", sub.name, exc)
 
     def on_session_end(self, messages: list[dict]) -> None:
-        for sub in self._subs:
+        with self._lock:
+            subs_snapshot = list(self._subs)
+        for sub in subs_snapshot:
             if self._health.is_open(sub.name):
                 continue
             try:
@@ -266,7 +302,9 @@ class MultiMemoryProvider(MemoryProvider):
                 logger.debug("[multi-memory] on_session_end %s: %s", sub.name, exc)
 
     def on_session_switch(self, new_session_id: str = "", *, parent_session_id: str = "", reset: bool = False, **kwargs: Any) -> None:
-        for sub in self._subs:
+        with self._lock:
+            subs_snapshot = list(self._subs)
+        for sub in subs_snapshot:
             if self._health.is_open(sub.name):
                 continue
             try:
@@ -277,7 +315,9 @@ class MultiMemoryProvider(MemoryProvider):
                 logger.debug("[multi-memory] on_session_switch %s: %s", sub.name, exc)
 
     def on_memory_write(self, action: str, target: str, content: str, metadata: dict[str, Any] | None = None) -> None:
-        for sub in self._subs:
+        with self._lock:
+            subs_snapshot = list(self._subs)
+        for sub in subs_snapshot:
             if self._health.is_open(sub.name):
                 continue
             try:
@@ -288,7 +328,9 @@ class MultiMemoryProvider(MemoryProvider):
                 logger.debug("[multi-memory] on_memory_write %s: %s", sub.name, exc)
 
     def on_delegation(self, task: str = "", result: str = "", *, child_session_id: str = "", **kwargs: Any) -> None:
-        for sub in self._subs:
+        with self._lock:
+            subs_snapshot = list(self._subs)
+        for sub in subs_snapshot:
             if self._health.is_open(sub.name):
                 continue
             try:
@@ -299,8 +341,10 @@ class MultiMemoryProvider(MemoryProvider):
                 logger.debug("[multi-memory] on_delegation %s: %s", sub.name, exc)
 
     def on_pre_compress(self, messages: list[dict[str, Any]]) -> str:
+        with self._lock:
+            subs_snapshot = list(self._subs)
         parts = []
-        for sub in self._subs:
+        for sub in subs_snapshot:
             if self._health.is_open(sub.name):
                 continue
             try:

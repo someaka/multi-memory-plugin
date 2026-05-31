@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from importlib.util import find_spec
 import importlib
+import inspect
 import logging
 from typing import Any
 
@@ -85,8 +86,11 @@ class _SubProviderAdapter:
     def queue_prefetch(self, query: str, *, session_id: str = "") -> None:
         self._delegate.queue_prefetch(query, session_id=session_id)
 
-    def sync_turn(self, user_content: str, assistant_content: str, *, session_id: str = "") -> None:
-        self._delegate.sync_turn(user_content, assistant_content, session_id=session_id)
+    def sync_turn(self, user_content: str, assistant_content: str, *, session_id: str = "", messages: list[dict] | None = None) -> None:
+        if messages is not None and self._sync_accepts_messages():
+            self._delegate.sync_turn(user_content, assistant_content, session_id=session_id, messages=messages)
+        else:
+            self._delegate.sync_turn(user_content, assistant_content, session_id=session_id)
 
     def system_prompt_block(self) -> str:
         return self._delegate.system_prompt_block()
@@ -101,13 +105,60 @@ class _SubProviderAdapter:
         self._delegate.on_session_switch(new_session_id, parent_session_id=parent_session_id, reset=reset, **kwargs)
 
     def on_memory_write(self, action: str, target: str, content: str, metadata: dict[str, Any] | None = None) -> None:
-        self._delegate.on_memory_write(action, target, content, metadata)
+        mode = self._metadata_write_mode()
+        if mode == "keyword":
+            self._delegate.on_memory_write(action, target, content, metadata=dict(metadata or {}))
+        elif mode == "positional":
+            self._delegate.on_memory_write(action, target, content, dict(metadata or {}))
+        else:
+            self._delegate.on_memory_write(action, target, content)
 
     def on_delegation(self, task: str = "", result: str = "", *, child_session_id: str = "", **kwargs: Any) -> None:
         self._delegate.on_delegation(task, result, child_session_id=child_session_id, **kwargs)
 
     def on_pre_compress(self, messages: list[dict[str, Any]]) -> str:
         return self._delegate.on_pre_compress(messages)
+
+    # -- Introspection helpers (ported from fork's MemoryManager) ----------
+
+    def _metadata_write_mode(self) -> str:
+        """Detect how the delegate's on_memory_write accepts metadata.
+
+        Returns 'keyword' if it accepts metadata as keyword arg,
+        'positional' if it accepts 4 positional args, or 'legacy' if
+        it only accepts 3 args (no metadata).
+        """
+        try:
+            sig = inspect.signature(self._delegate.on_memory_write)
+        except (TypeError, ValueError):
+            return "keyword"
+        params = list(sig.parameters.values())
+        if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params):
+            return "keyword"
+        if "metadata" in sig.parameters:
+            return "keyword"
+        accepted = [
+            p for p in params
+            if p.kind in {
+                inspect.Parameter.POSITIONAL_ONLY,
+                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                inspect.Parameter.KEYWORD_ONLY,
+            }
+        ]
+        if len(accepted) >= 4:
+            return "positional"
+        return "legacy"
+
+    def _sync_accepts_messages(self) -> bool:
+        """Return whether the delegate's sync_turn accepts a messages keyword."""
+        try:
+            sig = inspect.signature(self._delegate.sync_turn)
+        except (TypeError, ValueError):
+            return True
+        params = list(sig.parameters.values())
+        if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params):
+            return True
+        return "messages" in sig.parameters
 
     def close(self) -> None:
         """Close underlying connections.  Override in subclasses that manage

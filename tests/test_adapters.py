@@ -505,11 +505,12 @@ class TestLifecycleHooks:
         """on_memory_write passes metadata to all subs."""
         calls = []
         for sub in provider._subs:
-            sub.on_memory_write = lambda *a, ns=sub.name, **kw: calls.append((ns, a))
+            sub.on_memory_write = lambda *a, ns=sub.name, **kw: calls.append((ns, a, kw))
         provider.on_memory_write("add", "memory", "content", {"origin": "test"})
         assert len(calls) == len(provider._subs)
-        for _, args in calls:
-            assert args[3] == {"origin": "test"}
+        for _, args, kw in calls:
+            # MagicMock has **kwargs so introspection uses keyword mode
+            assert kw.get("metadata") == {"origin": "test"} or (len(args) >= 4 and args[3] == {"origin": "test"})
 
     def test_on_pre_compress_collects_results(self, provider):
         """on_pre_compress collects non-empty results from all subs."""
@@ -805,8 +806,9 @@ class TestSubProviderAdapterDelegation:
     def test_on_memory_write_delegates(self):
         adapter, delegate = self._make_adapter()
         adapter.on_memory_write("add", "memory", "content here", {"origin": "test"})
+        # MagicMock has **kwargs so introspection detects "keyword" mode
         delegate.on_memory_write.assert_called_once_with(
-            "add", "memory", "content here", {"origin": "test"}
+            "add", "memory", "content here", metadata={"origin": "test"}
         )
 
     def test_on_delegation_delegates(self):
@@ -1415,3 +1417,176 @@ class TestLegacyConfigInGetEnabledBackends:
         result = get_enabled_backends(cfg)
         assert "mnemosyne" in result
         assert "mem0" in result
+
+
+# ── Introspection tests (ported from fork's MemoryManager) ──────────────
+
+
+class TestIntrospectionHelpers:
+    """Tests for _metadata_write_mode and _sync_accepts_messages."""
+
+    def _make_adapter_with_delegate(self, delegate):
+        mock_cls = mock.MagicMock(return_value=delegate)
+        with mock.patch("multi_memory.adapters._try_import", return_value=mock_cls):
+            from multi_memory.adapters import _SubProviderAdapter
+
+            class _TestAdapter(_SubProviderAdapter):
+                CONFIG_KEY = "test"
+                MODULE = "test"
+                CLASS = "Test"
+                PREFIX = "test"
+
+            return _TestAdapter()
+
+    def test_metadata_mode_keyword_with_var_keyword(self):
+        """Delegate with **kwargs → keyword mode."""
+        delegate = mock.MagicMock()
+        adapter = self._make_adapter_with_delegate(delegate)
+        assert adapter._metadata_write_mode() == "keyword"
+
+    def test_metadata_mode_keyword_with_explicit_metadata_param(self):
+        """Delegate with explicit metadata param → keyword mode."""
+        delegate = mock.MagicMock()
+
+        def on_memory_write(action, target, content, metadata=None):
+            pass
+
+        delegate.on_memory_write = on_memory_write
+        adapter = self._make_adapter_with_delegate(delegate)
+        assert adapter._metadata_write_mode() == "keyword"
+
+    def test_metadata_mode_positional_4_args(self):
+        """Delegate with 4 positional args (no metadata keyword) → positional mode."""
+        delegate = mock.MagicMock()
+
+        def on_memory_write(action, target, content, meta):
+            pass
+
+        delegate.on_memory_write = on_memory_write
+        adapter = self._make_adapter_with_delegate(delegate)
+        assert adapter._metadata_write_mode() == "positional"
+
+    def test_metadata_mode_legacy_3_args(self):
+        """Delegate with only 3 args → legacy mode (no metadata)."""
+        delegate = mock.MagicMock()
+
+        def on_memory_write(action, target, content):
+            pass
+
+        delegate.on_memory_write = on_memory_write
+        adapter = self._make_adapter_with_delegate(delegate)
+        assert adapter._metadata_write_mode() == "legacy"
+
+    def test_legacy_provider_on_memory_write_skips_metadata(self):
+        """Legacy provider (3 args) should not receive metadata."""
+        delegate = mock.MagicMock()
+        calls = []
+
+        def on_memory_write(action, target, content):
+            calls.append((action, target, content))
+
+        # Assign raw function so introspection sees its real signature
+        delegate.on_memory_write = on_memory_write
+        adapter = self._make_adapter_with_delegate(delegate)
+        adapter.on_memory_write("add", "memory", "content", {"key": "val"})
+        assert calls == [("add", "memory", "content")]
+
+    def test_positional_provider_on_memory_write_passes_metadata_as_4th(self):
+        """Positional provider (4 args) receives metadata as 4th positional arg."""
+        delegate = mock.MagicMock()
+        calls = []
+
+        def on_memory_write(action, target, content, meta):
+            calls.append((action, target, content, meta))
+
+        delegate.on_memory_write = on_memory_write
+        adapter = self._make_adapter_with_delegate(delegate)
+        adapter.on_memory_write("add", "memory", "content", {"key": "val"})
+        assert len(calls) == 1
+        assert calls[0] == ("add", "memory", "content", {"key": "val"})
+
+    def test_keyword_provider_on_memory_write_passes_metadata_as_kwarg(self):
+        """Keyword provider accepts metadata as keyword arg."""
+        delegate = mock.MagicMock()
+        calls = []
+
+        def on_memory_write(action, target, content, metadata=None):
+            calls.append((action, target, content, metadata))
+
+        delegate.on_memory_write = on_memory_write
+        adapter = self._make_adapter_with_delegate(delegate)
+        adapter.on_memory_write("add", "memory", "content", {"key": "val"})
+        assert len(calls) == 1
+        assert calls[0] == ("add", "memory", "content", {"key": "val"})
+
+    def test_sync_accepts_messages_with_var_keyword(self):
+        """Delegate with **kwargs → accepts messages."""
+        delegate = mock.MagicMock()
+        adapter = self._make_adapter_with_delegate(delegate)
+        assert adapter._sync_accepts_messages() is True
+
+    def test_sync_accepts_messages_with_explicit_messages_param(self):
+        """Delegate with explicit messages param → accepts messages."""
+        delegate = mock.MagicMock()
+
+        def sync_turn(user, assistant, *, session_id="", messages=None):
+            pass
+
+        delegate.sync_turn = sync_turn
+        adapter = self._make_adapter_with_delegate(delegate)
+        assert adapter._sync_accepts_messages() is True
+
+    def test_sync_rejects_messages_without_param(self):
+        """Delegate without messages param → rejects messages."""
+        delegate = mock.MagicMock()
+
+        def sync_turn(user, assistant, *, session_id=""):
+            pass
+
+        delegate.sync_turn = sync_turn
+        adapter = self._make_adapter_with_delegate(delegate)
+        assert adapter._sync_accepts_messages() is False
+
+    def test_sync_turn_passes_messages_when_accepted(self):
+        """sync_turn passes messages kwarg when delegate accepts it."""
+        delegate = mock.MagicMock()
+        calls = []
+
+        def sync_turn(user, assistant, *, session_id="", messages=None):
+            calls.append((user, assistant, session_id, messages))
+
+        delegate.sync_turn = sync_turn
+        adapter = self._make_adapter_with_delegate(delegate)
+        msgs = [{"role": "user", "content": "hi"}]
+        adapter.sync_turn("user", "asst", session_id="s1", messages=msgs)
+        assert len(calls) == 1
+        assert calls[0] == ("user", "asst", "s1", msgs)
+
+    def test_sync_turn_skips_messages_when_rejected(self):
+        """sync_turn does not pass messages when delegate doesn't accept it."""
+        delegate = mock.MagicMock()
+        calls = []
+
+        def sync_turn(user, assistant, *, session_id=""):
+            calls.append((user, assistant, session_id))
+
+        delegate.sync_turn = sync_turn
+        adapter = self._make_adapter_with_delegate(delegate)
+        msgs = [{"role": "user", "content": "hi"}]
+        adapter.sync_turn("user", "asst", session_id="s1", messages=msgs)
+        assert len(calls) == 1
+        assert calls[0] == ("user", "asst", "s1")
+
+    def test_sync_turn_no_messages_kwarg_skips(self):
+        """sync_turn with messages=None does not pass messages."""
+        delegate = mock.MagicMock()
+        calls = []
+
+        def sync_turn(user, assistant, *, session_id=""):
+            calls.append((user, assistant, session_id))
+
+        delegate.sync_turn = sync_turn
+        adapter = self._make_adapter_with_delegate(delegate)
+        adapter.sync_turn("user", "asst", session_id="s1")
+        assert len(calls) == 1
+        assert calls[0] == ("user", "asst", "s1")

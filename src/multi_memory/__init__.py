@@ -262,14 +262,15 @@ class MultiMemoryProvider(MemoryProvider):
                 self._health.record_failure(sub.name)
                 logger.debug("[multi-memory] queue_prefetch %s: %s", sub.name, exc)
 
-    def sync_turn(self, user_content: str, assistant_content: str, *, session_id: str = "") -> None:
+    def sync_turn(self, user_content: str, assistant_content: str, *, session_id: str = "", **kwargs: Any) -> None:
+        messages = kwargs.get("messages")
         with self._lock:
             subs_snapshot = list(self._subs)
         for sub in subs_snapshot:
             if self._health.is_open(sub.name):
                 continue
             try:
-                sub.sync_turn(user_content, assistant_content, session_id=session_id)
+                sub.sync_turn(user_content, assistant_content, session_id=session_id, messages=messages)
                 self._health.record_success(sub.name)
             except Exception as exc:
                 self._health.record_failure(sub.name)

@@ -168,6 +168,35 @@ class _SubProviderAdapter:
             close_fn()
 
 
+class _GenericAdapter(_SubProviderAdapter):
+    """Adapter for ANY MemoryProvider loaded via Hermes's plugin discovery.
+
+    Used as a fallback when a backend name doesn't match any hardcoded adapter.
+    The provider is loaded via ``load_memory_provider(name)`` from
+    ``plugins.memory``.  Tool names are NOT prefixed — the provider is
+    responsible for its own naming convention.
+    """
+
+    CONFIG_KEY = ""  # Set dynamically
+    PREFIX = ""      # No prefix — provider handles its own names
+
+    def __init__(self, provider, name: str, **kwargs: Any):
+        self._delegate = provider
+        self._name = name
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    def get_tool_schemas(self) -> list[dict]:
+        # Don't prefix — the provider handles its own tool names
+        return self._delegate.get_tool_schemas()
+
+    def handle_tool_call(self, tool_name: str, args: dict, **kwargs: Any) -> str:
+        # Don't strip prefix — pass through as-is
+        return self._delegate.handle_tool_call(tool_name, args, **kwargs)
+
+
 class _MnemosyneAdapter(_SubProviderAdapter):
     CONFIG_KEY = "mnemosyne"
     MODULE     = "mnemosyne"

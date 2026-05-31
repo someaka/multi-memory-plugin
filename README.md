@@ -85,6 +85,23 @@ hermes multi remove mem0      # Remove a backend from config
 Backends you haven't installed are skipped with a **warning in the logs** —
 missing package, missing API key, or failed import. Nothing disappears silently.
 
+**Custom backends** — any `MemoryProvider` implementation dropped into
+`plugins/memory/<name>/` is automatically discovered via Hermes's plugin
+loader. Just add its name to your config:
+
+```yaml
+memory:
+  provider: multi
+  multi:
+    backends:
+      mnemosyne: {}
+      my_custom_backend: {}   # ← discovered via plugin loader
+```
+
+No code changes needed. The plugin uses Hermes's `load_memory_provider()`
+to find and wrap custom backends with a generic adapter that passes tool
+names through unchanged.
+
 ---
 
 ## Quick start

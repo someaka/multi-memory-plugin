@@ -69,6 +69,7 @@ except ImportError:
         def on_pre_compress(self, messages: list[dict]) -> str: return ""
 from .adapters import (
     _SubProviderAdapter,
+    _GenericAdapter,
     _MnemosyneAdapter,
     _Mem0Adapter,
     _HolographicAdapter,
@@ -517,5 +518,47 @@ def _load_backends_from_config(config: dict) -> list[_SubProviderAdapter]:
                     )
                 break
         else:
-            logger.warning("[multi-memory] unknown backend '%s'  skipping", key)
+            # No hardcoded adapter — try Hermes's plugin discovery
+            _try_generic_backend(key, backends)
     return backends
+
+
+def _try_generic_backend(name: str, backends: list) -> None:
+    """Try to load a backend via Hermes's ``load_memory_provider()`` discovery.
+
+    This enables custom/third-party backends that aren't hardcoded in the
+    plugin.  Any ``MemoryProvider`` implementation dropped into
+    ``plugins/memory/<name>/`` will be discovered and wrapped in a
+    ``_GenericAdapter``.
+    """
+    try:
+        from plugins.memory import load_memory_provider
+        provider = load_memory_provider(name)
+        if provider is None:
+            logger.warning(
+                "[multi-memory] backend '%s' not found in hardcoded adapters "
+                "or Hermes plugin discovery — skipping", name,
+            )
+            return
+        adapter = _GenericAdapter(provider, name)
+        if adapter.is_available():
+            backends.append(adapter)
+            logger.info(
+                "[multi-memory] '%s' loaded via plugin discovery (generic adapter)", name,
+            )
+        else:
+            logger.warning(
+                "[multi-memory] '%s' discovered but not available "
+                "(missing credentials or config?)", name,
+            )
+    except ImportError:
+        # plugins.memory not available (standalone mode)
+        logger.warning(
+            "[multi-memory] backend '%s' not in hardcoded adapters "
+            "and plugin discovery unavailable — skipping", name,
+        )
+    except Exception as exc:
+        logger.warning(
+            "[multi-memory] backend '%s' failed during plugin discovery: %s",
+            name, exc,
+        )

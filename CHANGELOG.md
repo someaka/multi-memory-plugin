@@ -5,6 +5,26 @@ All notable changes to the multi-memory plugin will be documented in this file.
 The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] — 2026-05-31
+
+### Added
+- **Runtime sub-provider management** — `add_provider()` and `remove_provider()`
+  methods for adding/removing sub-providers at runtime with proper shutdown,
+  health reset, and thread safety.
+- **`get_provider(name)`** — lookup sub-provider by name.
+- **`providers` property** — list of active sub-provider names.
+- **`get_all_tool_names()`** / **`has_tool()`** — tool introspection methods.
+- **`on_session_switch` empty guard** — matches fork behavior (skip empty session IDs).
+- **Metadata write mode introspection** — `_metadata_write_mode()` detects
+  keyword/positional/legacy signatures on delegates for `on_memory_write`.
+- **Sync messages introspection** — `_sync_accepts_messages()` detects if
+  delegate's `sync_turn` accepts a `messages` keyword.
+- **Holographic double-prefix fix** — `_HolographicAdapter` now uses
+  strip-then-re-add pattern (like all other adapters) to prevent
+  `holographic_holographic_store` when upstream returns prefixed names.
+- **Core integration spec** — `CORE-INTEGRATION-SPEC.md` defines the 7 minimal
+  core changes needed for full fork replacement.
+
 ## [0.5.0] — 2026-05-31
 
 ### Added

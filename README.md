@@ -55,6 +55,17 @@ whether the delegate accepts a `messages` keyword.
 cleanup. Backends like RetainDB that manage their own SQLite thread-locals
 get properly torn down.
 
+**CLI commands** — when `memory.provider: multi` is active, the plugin
+registers `hermes multi` subcommands:
+
+```bash
+hermes multi status           # Show active backends and config format
+hermes multi status --json    # Machine-readable JSON
+hermes multi list             # All 9 backends with active markers
+hermes multi add mem0         # Add a backend to config
+hermes multi remove mem0      # Remove a backend from config
+```
+
 ---
 
 ## Supported backends
@@ -203,6 +214,7 @@ src/multi_memory/
 ├── __init__.py      # register() + MultiMemoryProvider — the orchestrator
 ├── adapters.py      # 9 adapter classes — one per backend, prefix routing
 ├── budget.py        # ToolBudgetWarning — warns when schema count gets high
+├── cli.py           # register_cli() + hermes multi {status,list,add,remove}
 ├── config.py        # load_multi_config(), get_enabled_backends()
 ├── discovery.py     # discover_backends() — probe what's installed
 ├── health.py        # HealthTracker + circuit breaker + timeout wrapper

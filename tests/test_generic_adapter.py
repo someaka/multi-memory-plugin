@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+import sys
 from unittest import mock
-
 
 from multi_memory.adapters import _GenericAdapter
 
@@ -29,6 +29,34 @@ class FakeProvider:
 
     def system_prompt_block(self):
         return "# Custom Memory\nActive."
+
+
+def _mock_plugins_module(load_memory_provider_fn):
+    """Set up sys.modules with a mock plugins.memory module.
+
+    Returns a cleanup function.
+    """
+    mock_plugins = mock.MagicMock()
+    mock_plugins_memory = mock.MagicMock()
+    mock_plugins_memory.load_memory_provider = load_memory_provider_fn
+    mock_plugins.memory = mock_plugins_memory
+
+    old_plugins = sys.modules.get("plugins")
+    old_plugins_memory = sys.modules.get("plugins.memory")
+    sys.modules["plugins"] = mock_plugins
+    sys.modules["plugins.memory"] = mock_plugins_memory
+
+    def cleanup():
+        if old_plugins is not None:
+            sys.modules["plugins"] = old_plugins
+        else:
+            sys.modules.pop("plugins", None)
+        if old_plugins_memory is not None:
+            sys.modules["plugins.memory"] = old_plugins_memory
+        else:
+            sys.modules.pop("plugins.memory", None)
+
+    return cleanup
 
 
 class TestGenericAdapter:
@@ -59,13 +87,11 @@ class TestGenericAdapter:
     def test_initialize(self):
         provider = FakeProvider()
         adapter = _GenericAdapter(provider, "custom_backend")
-        # Should not raise
         adapter.initialize(session_id="test-123")
 
     def test_shutdown(self):
         provider = FakeProvider()
         adapter = _GenericAdapter(provider, "custom_backend")
-        # Should not raise
         adapter.shutdown()
 
     def test_system_prompt_block(self):
@@ -83,23 +109,11 @@ class TestGenericAdapterInMultiMemory:
 
         fake_provider = FakeProvider()
         backends = []
-        with mock.patch(
-            "plugins.memory.load_memory_provider",
-            return_value=fake_provider,
-        ):
-            # Need to mock importlib to make plugins.memory importable
-            import sys
-            mock_pm = mock.MagicMock()
-            mock_pm.load_memory_provider.return_value = fake_provider
-            old = sys.modules.get("plugins.memory")
-            sys.modules["plugins.memory"] = mock_pm
-            try:
-                _try_generic_backend("custom_backend", backends)
-            finally:
-                if old is not None:
-                    sys.modules["plugins.memory"] = old
-                else:
-                    sys.modules.pop("plugins.memory", None)
+        cleanup = _mock_plugins_module(lambda name: fake_provider if name == "custom_backend" else None)
+        try:
+            _try_generic_backend("custom_backend", backends)
+        finally:
+            cleanup()
 
         assert len(backends) == 1
         assert backends[0].name == "custom_backend"
@@ -109,19 +123,12 @@ class TestGenericAdapterInMultiMemory:
         """_try_generic_backend warns when provider not found."""
         from multi_memory import _try_generic_backend
 
-        import sys
-        mock_pm = mock.MagicMock()
-        mock_pm.load_memory_provider.return_value = None
-        old = sys.modules.get("plugins.memory")
-        sys.modules["plugins.memory"] = mock_pm
+        cleanup = _mock_plugins_module(lambda name: None)
         try:
             backends = []
             _try_generic_backend("nonexistent", backends)
         finally:
-            if old is not None:
-                sys.modules["plugins.memory"] = old
-            else:
-                sys.modules.pop("plugins.memory", None)
+            cleanup()
 
         assert len(backends) == 0
 
@@ -129,15 +136,17 @@ class TestGenericAdapterInMultiMemory:
         """_try_generic_backend handles ImportError in standalone mode."""
         from multi_memory import _try_generic_backend
 
-        import sys
         # Remove plugins.memory from sys.modules to trigger ImportError
-        old = sys.modules.pop("plugins.memory", None)
+        old_p = sys.modules.pop("plugins", None)
+        old_pm = sys.modules.pop("plugins.memory", None)
         try:
             backends = []
             _try_generic_backend("custom_backend", backends)
         finally:
-            if old is not None:
-                sys.modules["plugins.memory"] = old
+            if old_p is not None:
+                sys.modules["plugins"] = old_p
+            if old_pm is not None:
+                sys.modules["plugins.memory"] = old_pm
 
         assert len(backends) == 0
 
@@ -149,18 +158,11 @@ class TestGenericAdapterInMultiMemory:
             def is_available(self):
                 return False
 
-        import sys
-        mock_pm = mock.MagicMock()
-        mock_pm.load_memory_provider.return_value = UnavailableProvider()
-        old = sys.modules.get("plugins.memory")
-        sys.modules["plugins.memory"] = mock_pm
+        cleanup = _mock_plugins_module(lambda name: UnavailableProvider())
         try:
             backends = []
             _try_generic_backend("unavailable_backend", backends)
         finally:
-            if old is not None:
-                sys.modules["plugins.memory"] = old
-            else:
-                sys.modules.pop("plugins.memory", None)
+            cleanup()
 
         assert len(backends) == 0

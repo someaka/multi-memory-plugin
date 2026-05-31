@@ -1,13 +1,12 @@
 # Multi-Memory Plugin — Configuration Reference
 
-## Overview
+## Install
 
-The multi-memory plugin lets you run multiple memory backends simultaneously via a single
-`MemoryProvider` instance. All lifecycle calls (`initialize`, `shutdown`, `prefetch`,
-`sync_turn`, etc.) fan out to every active sub-provider with per-provider error isolation
-and circuit-breaker protection.
+```bash
+hermes plugins install someaka/multi-memory-plugin
+```
 
-Configuration is read from `~/.hermes/config.yaml` (or `$HERMES_HOME/config.yaml`).
+Then activate via `hermes memory setup` or edit config directly.
 
 ---
 
@@ -208,15 +207,28 @@ A backend is treated as disabled if its value is one of:
 
 ---
 
+## Development
+
+```bash
+# Symlink for live editing
+ln -sf "$(pwd)/src/multi_memory" ~/.hermes/hermes-agent/plugins/memory/multi/
+
+# Test
+pip install -e ".[all,test]"
+python -m pytest tests/ -v
+
+# Lint
+ruff check src/ tests/
+```
+
+---
+
 ## Troubleshooting
 
 **Backend not loading?** Check the Hermes logs:
 ```bash
 tail -f ~/.hermes/logs/hermes.log | grep "multi-memory"
 ```
-
-**Unknown backend warning?** Check the config key spelling. Valid keys: `mnemosyne`,
-`mem0`, `holographic`, `honcho`, `openviking`, `hindsight`, `retaindb`, `byterover`, `supermemory`.
 
 **ImportError for a backend?** Install the missing package:
 ```bash

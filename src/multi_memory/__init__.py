@@ -137,7 +137,25 @@ class MultiMemoryProvider(MemoryProvider):
             cfg_path = os.path.join(hermes_home, "config.yaml")
             with open(cfg_path) as f:
                 cfg = yaml.safe_load(f) or {}
-            self._subs = _load_backends_from_config(cfg)
+            candidates = _load_backends_from_config(cfg)
+            # Validate schemas BEFORE accepting — a broken backend must
+            # NOT be registered (matches fork's schema-validation-before-
+            # registration pattern from memory_manager.py).
+            validated = []
+            for adapter in candidates:
+                try:
+                    schemas = adapter.get_tool_schemas()
+                    validated.append(adapter)
+                    logger.info(
+                        "[multi-memory] %s validated (%d tools)", adapter.name, len(schemas)
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "[multi-memory] %s failed schema validation — NOT registered: %s",
+                        adapter.name, exc,
+                    )
+                    self._health.record_failure(adapter.name)
+            self._subs = validated
             logger.info(
                 "[multi-memory] loaded %d backends: %s",
                 len(self._subs), [s.name for s in self._subs]
@@ -232,13 +250,24 @@ class MultiMemoryProvider(MemoryProvider):
 
     def add_provider(self, adapter: _SubProviderAdapter) -> bool:
         """Add a sub-provider at runtime. Returns True if added, False if duplicate."""
+        # Validate schemas before accepting (fork pattern)
+        try:
+            schemas = adapter.get_tool_schemas()
+        except Exception as exc:
+            logger.warning(
+                "[multi-memory] add_provider: '%s' failed schema validation — rejected: %s",
+                adapter.name, exc,
+            )
+            return False
         with self._lock:
             if any(s.name == adapter.name for s in self._subs):
                 logger.warning("[multi-memory] add_provider: '%s' already active", adapter.name)
                 return False
             self._subs.append(adapter)
             self._health.reset(adapter.name)
-        logger.info("[multi-memory] added provider '%s'", adapter.name)
+        logger.info(
+            "[multi-memory] added provider '%s' (%d tools)", adapter.name, len(schemas)
+        )
         return True
 
     def remove_provider(self, name: str) -> bool:

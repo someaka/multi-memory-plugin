@@ -816,6 +816,23 @@ class TestRuntimeManagement:
         assert "holographic_fact_store" not in all_names_after
         assert "mnemosyne_search" in all_names_after
 
+    def test_add_provider_rejects_broken_schema(self, provider):
+        """add_provider rejects adapter whose get_tool_schemas() raises."""
+        broken = mock.MagicMock()
+        broken.name = "broken"
+        broken.get_tool_schemas.side_effect = RuntimeError("schema boom")
+        assert provider.add_provider(broken) is False
+        assert "broken" not in provider.providers
+        assert len(provider._subs) == 2
+
+    def test_add_provider_validates_before_adding(self, provider):
+        """add_provider calls get_tool_schemas() before accepting."""
+        new_sub = mock.MagicMock()
+        new_sub.name = "validated"
+        new_sub.get_tool_schemas.return_value = [{"name": "validated_tool"}]
+        assert provider.add_provider(new_sub) is True
+        new_sub.get_tool_schemas.assert_called_once()
+
 
 # ── _SubProviderAdapter delegation tests (mock-based, no real backends) ───────
 

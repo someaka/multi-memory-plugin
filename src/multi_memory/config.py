@@ -1,77 +1,92 @@
-"""Config helpers for loading enabled backends from ~/.hermes/config.yaml.
+"""Config loading for the multi-memory plugin.
 
-Supports three config shapes:
+Reads ``~/.hermes/config.yaml`` and extracts the multi-memory section.
+Supports both ``memory.multi.backends`` (dict) and ``memory.providers``
+(list) formats.
 
-1. PLAN spec (friendly)::
-
-    memory:
-      provider: multi
-      multi:
-        backends:
-          mnemosyne: {}
-          mem0: {}
-
-2. INVESTIGATION-C canonical (fork format)::
-
-    memory:
-      providers:
-        - "mnemosyne"
-        - "mem0"
-
-3. Legacy single-provider string (backward compat)::
-
-    memory:
-      provider: "mem0"
+Paths are computed lazily to survive profile switches.
 """
+
 from __future__ import annotations
 
+import logging
 import os
 from typing import Any
 
 import yaml
 
+logger = logging.getLogger(__name__)
 
-_HERMES_HOME = os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes"))
-_CONFIG_PATH = os.path.join(_HERMES_HOME, "config.yaml")
 
-__all__ = ["load_multi_config", "get_enabled_backends"]
+def _get_hermes_home() -> str:
+    """Return HERMES_HOME — computed lazily to survive profile switches."""
+    return os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes"))
+
+
+def _get_config_path() -> str:
+    """Return config.yaml path — computed lazily."""
+    return os.path.join(_get_hermes_home(), "config.yaml")
 
 
 def load_multi_config() -> dict[str, Any]:
-    """Load the Hermes config YAML from the default path."""
+    """Load the multi-memory section from config.yaml.
+
+    Returns the raw dict under ``memory`` (or ``{}`` on failure).
+    """
+    cfg_path = _get_config_path()
     try:
-        with open(_CONFIG_PATH) as f:
-            return yaml.safe_load(f) or {}
+        with open(cfg_path, encoding="utf-8") as f:
+            cfg = yaml.safe_load(f) or {}
     except FileNotFoundError:
+        logger.debug("[multi-memory] config not found at %s", cfg_path)
         return {}
+    except (PermissionError, IsADirectoryError, yaml.YAMLError) as exc:
+        logger.warning("[multi-memory] failed to read config at %s: %s", cfg_path, exc)
+        return {}
+    except Exception as exc:
+        logger.warning("[multi-memory] unexpected error reading config: %s", exc)
+        return {}
+
+    if not isinstance(cfg, dict):
+        return {}
+
+    memory_cfg = cfg.get("memory")
+    if not isinstance(memory_cfg, dict):
+        return {}
+
+    return memory_cfg
 
 
 def get_enabled_backends(config: dict | None = None) -> list[str]:
-    """Return list of enabled backend config keys.
+    """Return a list of enabled backend names.
 
-    Reads from ``multi.backends`` dict (PLAN spec), then ``memory.providers``
-    list (INVESTIGATION-C canonical), then falls back to legacy
-    ``memory.provider`` string.  First non-empty wins.
+    Precedence: ``multi.backends`` > ``providers`` list > ``provider`` string.
+    Accepts the ``memory`` section (as returned by ``load_multi_config()``).
     """
-    cfg = config or load_multi_config()
+    if config is None:
+        config = load_multi_config()
 
-    # 1. PLAN spec: multi.backends dict
-    #    Accept both top-level {"multi": {"backends": ...}} (tests / standalone)
-    #    and nested {"memory": {"multi": {"backends": ...}}} (real config.yaml).
-    memory_cfg = cfg.get("memory") or {}
-    multi_cfg = cfg.get("multi") or memory_cfg.get("multi") or {}
-    backends = multi_cfg.get("backends") or {}
-    if isinstance(backends, dict) and backends:
-        return [k for k, v in backends.items() if v not in (False, None, 0, "0", "false", "False", "no")]
+    if not isinstance(config, dict):
+        return []
 
-    # 2. INVESTIGATION-C canonical: providers list
-    providers = memory_cfg.get("providers") or []
+    # Dict format takes precedence
+    multi_cfg = config.get("multi")
+    if isinstance(multi_cfg, dict):
+        backends = multi_cfg.get("backends")
+        if isinstance(backends, dict) and backends:
+            return [
+                name for name, enabled in backends.items()
+                if enabled not in (False, None, 0, "0", "false", "False", "no")
+            ]
+
+    # List format
+    providers = config.get("providers")
     if isinstance(providers, list) and providers:
         return [p for p in providers if p]
 
-    # 3. Legacy: single provider string
-    single = memory_cfg.get("provider") or ""
-    if isinstance(single, str) and single and single != "multi":
+    # Legacy single-string format
+    single = config.get("provider", "")
+    if single and single != "multi":
         return [single]
 
     return []

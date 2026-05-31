@@ -103,22 +103,22 @@ class TestLoadMultiConfig:
         """load_multi_config reads from HERMES_HOME/config.yaml."""
         config_file = tmp_path / "config.yaml"
         config_file.write_text("memory:\n  provider: multi\n")
-        with mock.patch("multi_memory.config._CONFIG_PATH", str(config_file)):
+        with mock.patch("multi_memory.config._get_config_path", return_value=str(config_file)):
             result = load_multi_config()
-        assert result == {"memory": {"provider": "multi"}}
+        assert result == {"provider": "multi"}
 
     def test_load_empty_file(self, tmp_path):
         """Empty config file returns empty dict."""
         config_file = tmp_path / "config.yaml"
         config_file.write_text("")
-        with mock.patch("multi_memory.config._CONFIG_PATH", str(config_file)):
+        with mock.patch("multi_memory.config._get_config_path", return_value=str(config_file)):
             result = load_multi_config()
         assert result == {}
 
     def test_load_missing_file_defaults_to_empty(self, tmp_path):
         """Missing config.yaml returns empty dict."""
         config_file = tmp_path / "config.yaml"  # does not exist
-        with mock.patch("multi_memory.config._CONFIG_PATH", str(config_file)):
+        with mock.patch("multi_memory.config._get_config_path", return_value=str(config_file)):
             result = load_multi_config()
         assert result == {}
 

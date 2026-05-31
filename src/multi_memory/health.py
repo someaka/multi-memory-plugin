@@ -1,134 +1,120 @@
-"""Per-backend health tracking with circuit-breaker semantics.
+"""Circuit-breaker health tracking for sub-providers.
 
-Tracks consecutive failures per backend key and opens the circuit
-after a configurable threshold (default 3).  Also provides a
-``timeout_wrapper`` decorator for marking a call as failed when it
-exceeds a duration limit.
+Each backend has a failure counter.  After 3 consecutive failures the
+circuit *opens* and the backend is skipped for subsequent lifecycle
+calls.  After a cooldown period (30 s) the circuit enters *half-open*
+state — one probe call is allowed.  If it succeeds the circuit closes;
+if it fails, the circuit re-opens with an extended cooldown.
+
+Thread-safe: all counter mutations are protected by a ``threading.Lock``.
 """
 
 from __future__ import annotations
 
-import functools
 import logging
+import threading
 import time
-from typing import Any, Callable
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_FAILURE_LIMIT = 3
-DEFAULT_TIMEOUT = 30.0
+# ── Configuration ──────────────────────────────────────────────────────────
 
-__all__ = ["HealthTracker", "CircuitOpenError", "timeout_wrapper", "DEFAULT_FAILURE_LIMIT", "DEFAULT_TIMEOUT"]
-
-
-class CircuitOpenError(RuntimeError):
-    """Raised when a call is skipped because the circuit is open."""
+_CONSECUTIVE_FAILURES_TO_OPEN: int = 3
+_HALF_OPEN_COOLDOWN_SECONDS: float = 30.0
+_HALF_OPEN_MAX_COOLDOWN: float = 300.0  # 5 min cap on exponential backoff
 
 
 class HealthTracker:
-    """Tracks consecutive failures per backend and opens on threshold.
+    """Per-backend circuit breaker with half-open recovery.
 
-    Parameters
-    ----------
-    failure_limit : int
-        Consecutive failures before the circuit opens (default 3).
+    States:
+        closed   — healthy, calls pass through
+        open     — too many failures, calls are skipped
+        half-open — cooldown expired, one probe call allowed
     """
 
-    def __init__(self, failure_limit: int = DEFAULT_FAILURE_LIMIT) -> None:
-        self._failure_limit = failure_limit
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        # {backend_key: consecutive_failure_count}
         self._counters: dict[str, int] = {}
-
-    # ── queries ──────────────────────────────────────────────────────────
-
-    def is_open(self, backend_key: str) -> bool:
-        """Return ``True`` if the backend circuit is open (tripped)."""
-        return self._counters.get(backend_key, 0) >= self._failure_limit
-
-    def failures(self, backend_key: str) -> int:
-        """Return current consecutive-failure count for *backend_key*."""
-        return self._counters.get(backend_key, 0)
-
-    # ── recording ────────────────────────────────────────────────────────
+        # {backend_key: timestamp_when_circuit_opened}
+        self._opened_at: dict[str, float] = {}
+        # {backend_key: current_cooldown_seconds}
+        self._cooldown: dict[str, float] = {}
 
     def record_success(self, backend_key: str) -> None:
-        """Reset the failure counter on success."""
-        self._counters.pop(backend_key, None)
+        """Record a successful call — resets the failure counter and closes the circuit."""
+        with self._lock:
+            self._counters.pop(backend_key, None)
+            self._opened_at.pop(backend_key, None)
+            self._cooldown.pop(backend_key, None)
 
     def record_failure(self, backend_key: str) -> None:
-        """Increment the failure counter.
+        """Record a failed call — increments counter, opens circuit at threshold."""
+        with self._lock:
+            prev = self._counters.get(backend_key, 0)
+            new_count = prev + 1
+            self._counters[backend_key] = new_count
 
-        A warning is logged exactly once — the first time the counter
-        reaches (or crosses) *failure_limit*.
+            if new_count >= _CONSECUTIVE_FAILURES_TO_OPEN:
+                was_already_open = backend_key in self._opened_at
+                if not was_already_open:
+                    logger.warning(
+                        "[multi-memory] circuit OPEN for '%s' after %d failures",
+                        backend_key, new_count,
+                    )
+                    self._opened_at[backend_key] = time.monotonic()
+                    self._cooldown[backend_key] = _HALF_OPEN_COOLDOWN_SECONDS
+                else:
+                    # Re-open after half-open probe failure — extend cooldown
+                    prev_cooldown = self._cooldown.get(backend_key, _HALF_OPEN_COOLDOWN_SECONDS)
+                    self._cooldown[backend_key] = min(prev_cooldown * 2, _HALF_OPEN_MAX_COOLDOWN)
+                    self._opened_at[backend_key] = time.monotonic()
+
+    def is_open(self, backend_key: str) -> bool:
+        """Return True if the circuit is open (backend should be skipped).
+
+        After the cooldown period, returns False (half-open) to allow
+        one probe call.  If the probe fails, ``record_failure`` re-opens
+        with an extended cooldown.
         """
-        prev = self._counters.get(backend_key, 0)
-        self._counters[backend_key] = prev + 1
-        current = self._counters[backend_key]
-        if prev < self._failure_limit <= current:
-            logger.warning(
-                "[multi-memory] HealthTracker: circuit OPEN for %s "
-                "(%d consecutive failures)",
-                backend_key,
-                current,
-            )
+        with self._lock:
+            opened = self._opened_at.get(backend_key)
+            if opened is None:
+                return False  # circuit is closed
 
-    def reset(self, backend_key: str | None = None) -> None:
-        """Reset failure counters.  If *backend_key* is *None*, reset all."""
-        if backend_key is None:
-            self._counters.clear()
-        else:
+            cooldown = self._cooldown.get(backend_key, _HALF_OPEN_COOLDOWN_SECONDS)
+            elapsed = time.monotonic() - opened
+            if elapsed >= cooldown:
+                # Half-open: allow one probe
+                return False
+
+            return True  # still in cooldown
+
+    def reset(self, backend_key: str) -> None:
+        """Manually reset a backend to healthy state."""
+        with self._lock:
             self._counters.pop(backend_key, None)
+            self._opened_at.pop(backend_key, None)
+            self._cooldown.pop(backend_key, None)
 
 
-def timeout_wrapper(
-    func: Callable[..., Any],
-    *,
-    backend_key: str,
-    tracker: HealthTracker,
-    timeout: float = DEFAULT_TIMEOUT,
-) -> Callable[..., Any]:
-    """Wrap *func* so that it records success/failure on *tracker*.
+def timeout_wrapper(fn: Any, timeout: float = 30.0) -> Any:
+    """Run *fn()* with a wall-clock timeout.
 
-    If the circuit is open the wrapped function raises
-    ``CircuitOpenError`` immediately (no call).  Otherwise it calls
-    *func* and records the outcome.  (Actual wall-clock timeout
-    enforcement is left to the caller — this wrapper tracks duration
-    and logs a warning if *timeout* is exceeded.)
+    Returns the function result, or raises ``TimeoutError`` if *fn*
+    doesn't finish within *timeout* seconds.
+
+    .. note:: This uses ``concurrent.futures.ThreadPoolExecutor`` which
+       means the function actually runs in a separate thread.  If *fn*
+       mutates shared state, ensure it is thread-safe.
     """
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FutTimeout
 
-    @functools.wraps(func)
-    def wrapper(*args: Any, **kwargs: Any) -> Any:
-        if tracker.is_open(backend_key):
-            raise CircuitOpenError(
-                f"Circuit open for backend {backend_key!r} "
-                f"({tracker.failures(backend_key)} consecutive failures)"
-            )
-        start = time.monotonic()
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(fn)
         try:
-            result = func(*args, **kwargs)
-        except Exception as exc:
-            elapsed = time.monotonic() - start
-            tracker.record_failure(backend_key)
-            if elapsed > timeout:
-                logger.warning(
-                    "[multi-memory] timeout_wrapper: %s took %.1fs "
-                    "(exceeded %.1fs timeout) and failed: %s",
-                    backend_key,
-                    elapsed,
-                    timeout,
-                    exc,
-                )
-            raise
-        else:
-            elapsed = time.monotonic() - start
-            tracker.record_success(backend_key)
-            if elapsed > timeout:
-                logger.warning(
-                    "[multi-memory] timeout_wrapper: %s took %.1fs "
-                    "(exceeded %.1fs timeout) but succeeded",
-                    backend_key,
-                    elapsed,
-                    timeout,
-                )
-            return result
-
-    return wrapper
+            return future.result(timeout=timeout)
+        except _FutTimeout:
+            raise TimeoutError(f"Operation timed out after {timeout}s")

@@ -363,19 +363,21 @@ class TestLifecycleHooks:
     def test_shutdown_calls_in_reverse_order(self, provider):
         """shutdown() calls sub-providers in reversed order."""
         call_order = []
-        for sub in provider._subs:
+        subs_snapshot = list(provider._subs)
+        for sub in subs_snapshot:
             # shutdown() prefers close() over shutdown() — mock both
             ns = sub.name
             sub.close = lambda ns=ns: call_order.append(ns)
             sub.shutdown = lambda ns=ns: call_order.append(ns)
         provider.shutdown()
-        expected = [s.name for s in reversed(provider._subs)]
+        expected = [s.name for s in reversed(subs_snapshot)]
         assert call_order == expected
 
     def test_shutdown_exception_isolation(self, provider):
         """Failure in one sub's shutdown() doesn't stop others."""
         flags = []
-        for i, sub in enumerate(provider._subs):
+        subs_snapshot = list(provider._subs)
+        for i, sub in enumerate(subs_snapshot):
             def make_shutdown(idx):
                 def fn():
                     flags.append(idx)
@@ -386,7 +388,7 @@ class TestLifecycleHooks:
             sub.close = make_shutdown(i)
             sub.shutdown = make_shutdown(i)
         provider.shutdown()  # Should not raise
-        assert len(flags) == len(provider._subs)
+        assert len(flags) == len(subs_snapshot)
 
     def test_prefetch_concatenates_results(self, provider):
         """prefetch() collects non-empty results from all subs."""
@@ -765,7 +767,7 @@ class TestRuntimeManagement:
 
         provider.remove_provider("holographic")
         # Health counter should be reset
-        assert provider._health.failures("holographic") == 0
+        assert not provider._health.is_open("holographic")
 
     def test_add_then_remove_roundtrip(self, provider):
         """Full add-then-remove roundtrip works."""
@@ -1423,7 +1425,6 @@ class TestThreadSafety:
         type(mock_sub).PREFIX = mock.PropertyMock(return_value="fake")
         mock_sub.handle_tool_call.return_value = '{"result": "ok"}'
         prov._subs = [mock_sub]
-        prov._tool_to_provider = {"fake_search": mock_sub}
 
         result = prov.handle_tool_call("fake_search", {"query": "test"})
         assert "ok" in result
@@ -1478,7 +1479,7 @@ class TestSchemaFailureProtection:
 
         prov._subs = [broken]
         prov.get_tool_schemas()
-        assert prov._health.failures("broken") >= 1
+        assert prov._health._counters.get("broken", 0) >= 1
 
 
 class TestCloseMethod:
@@ -1541,32 +1542,32 @@ class TestLegacyConfigInGetEnabledBackends:
 
     def test_legacy_single_provider(self):
         from multi_memory.config import get_enabled_backends
-        cfg = {"memory": {"provider": "mem0"}}
+        cfg = {"provider": "mem0"}
         result = get_enabled_backends(cfg)
         assert result == ["mem0"]
 
     def test_legacy_provider_multi_skipped(self):
         """memory.provider: 'multi' is the plugin itself, not a backend."""
         from multi_memory.config import get_enabled_backends
-        cfg = {"memory": {"provider": "multi"}}
+        cfg = {"provider": "multi"}
         result = get_enabled_backends(cfg)
         assert result == []
 
     def test_providers_list_takes_precedence(self):
         from multi_memory.config import get_enabled_backends
-        cfg = {"memory": {"provider": "mem0", "providers": ["holographic", "honcho"]}}
+        cfg = {"provider": "mem0", "providers": ["holographic", "honcho"]}
         result = get_enabled_backends(cfg)
         assert result == ["holographic", "honcho"]
 
     def test_multi_backends_takes_precedence_over_all(self):
         from multi_memory.config import get_enabled_backends
-        cfg = {"memory": {"provider": "mem0", "providers": ["a"], "multi": {"backends": {"b": True}}}}
+        cfg = {"provider": "mem0", "providers": ["a"], "multi": {"backends": {"b": True}}}
         result = get_enabled_backends(cfg)
         assert result == ["b"]
 
     def test_nested_memory_multi_backends(self):
         from multi_memory.config import get_enabled_backends
-        cfg = {"memory": {"multi": {"backends": {"mnemosyne": {}, "mem0": {}}}}}
+        cfg = {"multi": {"backends": {"mnemosyne": {}, "mem0": {}}}}
         result = get_enabled_backends(cfg)
         assert "mnemosyne" in result
         assert "mem0" in result

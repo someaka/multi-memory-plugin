@@ -104,6 +104,11 @@ _SUB_CLASSES = (
 )
 
 
+def _is_disabled(value: Any) -> bool:
+    """Return True if a config value means 'this backend is disabled'."""
+    return value is False or value is None or value in (0, "0", "false", "False", "no")
+
+
 def register(ctx) -> None:
     """Entry point — called by Hermes plugin loader via _ProviderCollector."""
     ctx.register_memory_provider(MultiMemoryProvider())
@@ -131,6 +136,11 @@ class MultiMemoryProvider(MemoryProvider):
         self._load_config()
         self._validate_namespaces()
 
+    def __repr__(self) -> str:
+        with self._lock:
+            names = [s.name for s in self._subs]
+        return f"MultiMemoryProvider(backends={names})"
+
     def _load_config(self) -> None:
         """Read config.yaml and populate sub-adapters."""
         try:
@@ -138,6 +148,9 @@ class MultiMemoryProvider(MemoryProvider):
             cfg_path = os.path.join(hermes_home, "config.yaml")
             with open(cfg_path) as f:
                 cfg = yaml.safe_load(f) or {}
+            if not isinstance(cfg, dict):
+                logger.warning("[multi-memory] config.yaml is not a dict — ignoring")
+                return
             candidates = _load_backends_from_config(cfg)
             # Validate schemas BEFORE accepting — a broken backend must
             # NOT be registered (matches fork's schema-validation-before-
@@ -169,6 +182,13 @@ class MultiMemoryProvider(MemoryProvider):
         validator = NamespaceValidator(list(_SUB_CLASSES))
         validator.validate_all()
 
+    # ─── Snapshot helper ───────────────────────────────────────────────────
+
+    def _snapshot(self) -> list[_SubProviderAdapter]:
+        """Return a thread-safe snapshot of active sub-providers."""
+        with self._lock:
+            return list(self._subs)
+
     # ─── 3 required abstract methods ────────────────────────────────────────
 
     @property
@@ -186,6 +206,9 @@ class MultiMemoryProvider(MemoryProvider):
 
     def initialize(self, session_id: str, **kwargs: Any) -> None:
         for sub in self._subs:
+            if self._health.is_open(sub.name):
+                logger.warning("[multi-memory] %s initialize() skipped (circuit open)", sub.name)
+                continue
             try:
                 sub.initialize(session_id=session_id, **kwargs)
                 self._health.record_success(sub.name)
@@ -218,17 +241,16 @@ class MultiMemoryProvider(MemoryProvider):
             return schemas
 
     def handle_tool_call(self, tool_name: str, args: dict, **kwargs: Any) -> str:
-        with self._lock:
-            subs_snapshot = list(self._subs)
+        subs = self._snapshot()
         # Match by adapter PREFIX (not sub.name) — handles cases where
         # the config key differs from the tool prefix (e.g. ByteRover: brv_).
-        for sub in subs_snapshot:
+        for sub in subs:
             pfx = getattr(type(sub), 'PREFIX', '') or sub.name
             if tool_name.startswith(f"{pfx}_"):
                 return sub.handle_tool_call(tool_name, args, **kwargs)
         # Fallback: try all subs without prefix match
         errors = []
-        for sub in subs_snapshot:
+        for sub in subs:
             try:
                 return sub.handle_tool_call(tool_name, args, **kwargs)
             except Exception as exc:
@@ -286,14 +308,7 @@ class MultiMemoryProvider(MemoryProvider):
                 return False
             self._subs = remaining
         # Shutdown outside lock
-        try:
-            close_fn = getattr(target, 'close', None)
-            if callable(close_fn):
-                close_fn()
-            else:
-                target.shutdown()
-        except Exception as exc:
-            logger.warning("[multi-memory] remove_provider shutdown %s: %s", name, exc)
+        _close_or_shutdown(target, name)
         self._health.reset(name)
         logger.info("[multi-memory] removed provider '%s'", name)
         return True
@@ -316,47 +331,37 @@ class MultiMemoryProvider(MemoryProvider):
                 for sub in self._subs
             }
 
-    # ─── Optional hooks (pass-through to all active subs) ──
+    # ─── Optional hooks (pass-through to all active subs) ────────────────
 
     def shutdown(self) -> None:
+        subs = self._snapshot()
+        for sub in reversed(subs):
+            _close_or_shutdown(sub, sub.name)
+        # Clear subs so post-shutdown calls don't hit dead delegates
         with self._lock:
-            subs_snapshot = list(reversed(self._subs))
-        for sub in subs_snapshot:
-            try:
-                # Prefer close() which handles both shutdown + connection cleanup
-                close_fn = getattr(sub, 'close', None)
-                if callable(close_fn):
-                    close_fn()
-                else:
-                    sub.shutdown()
-                self._health.record_success(f"{sub.name}.shutdown")
-            except Exception as exc:
-                self._health.record_failure(f"{sub.name}.shutdown")
-                logger.warning("[multi-memory] shutdown %s: %s", sub.name, exc)
+            self._subs.clear()
 
     def system_prompt_block(self) -> str:
-        with self._lock:
-            subs_snapshot = list(self._subs)
-        parts = [b for s in subs_snapshot if (b := s.system_prompt_block())]
+        parts = [b for s in self._snapshot() if (b := s.system_prompt_block())]
         return "\n\n".join(parts) if parts else ""
 
     def prefetch(self, query: str, *, session_id: str = "") -> str:
-        with self._lock:
-            subs_snapshot = list(self._subs)
         parts = []
-        for sub in subs_snapshot:
+        for sub in self._snapshot():
+            if self._health.is_open(sub.name):
+                continue
             try:
                 r = sub.prefetch(query, session_id=session_id)
                 if r:
-                   parts.append(f"[{sub.name}] {r}")
+                    parts.append(f"[{sub.name}] {r}")
+                self._health.record_success(sub.name)
             except Exception as exc:
                 self._health.record_failure(sub.name)
                 logger.warning("[multi-memory] prefetch %s: %s", sub.name, exc)
         return "\n\n".join(parts)
+
     def queue_prefetch(self, query: str, *, session_id: str = "") -> None:
-        with self._lock:
-            subs_snapshot = list(self._subs)
-        for sub in subs_snapshot:
+        for sub in self._snapshot():
             if self._health.is_open(sub.name):
                 continue
             try:
@@ -368,9 +373,7 @@ class MultiMemoryProvider(MemoryProvider):
 
     def sync_turn(self, user_content: str, assistant_content: str, *, session_id: str = "", **kwargs: Any) -> None:
         messages = kwargs.get("messages")
-        with self._lock:
-            subs_snapshot = list(self._subs)
-        for sub in subs_snapshot:
+        for sub in self._snapshot():
             if self._health.is_open(sub.name):
                 continue
             try:
@@ -381,9 +384,7 @@ class MultiMemoryProvider(MemoryProvider):
                 logger.warning("[multi-memory] sync_turn %s: %s", sub.name, exc)
 
     def on_turn_start(self, turn_number: int = 0, message: str = "", **kwargs: Any) -> None:
-        with self._lock:
-            subs_snapshot = list(self._subs)
-        for sub in subs_snapshot:
+        for sub in self._snapshot():
             if self._health.is_open(sub.name):
                 continue
             try:
@@ -394,9 +395,7 @@ class MultiMemoryProvider(MemoryProvider):
                 logger.warning("[multi-memory] on_turn_start %s: %s", sub.name, exc)
 
     def on_session_end(self, messages: list[dict]) -> None:
-        with self._lock:
-            subs_snapshot = list(self._subs)
-        for sub in subs_snapshot:
+        for sub in self._snapshot():
             if self._health.is_open(sub.name):
                 continue
             try:
@@ -409,9 +408,7 @@ class MultiMemoryProvider(MemoryProvider):
     def on_session_switch(self, new_session_id: str = "", *, parent_session_id: str = "", reset: bool = False, **kwargs: Any) -> None:
         if not new_session_id:
             return
-        with self._lock:
-            subs_snapshot = list(self._subs)
-        for sub in subs_snapshot:
+        for sub in self._snapshot():
             if self._health.is_open(sub.name):
                 continue
             try:
@@ -422,9 +419,7 @@ class MultiMemoryProvider(MemoryProvider):
                 logger.warning("[multi-memory] on_session_switch %s: %s", sub.name, exc)
 
     def on_memory_write(self, action: str, target: str, content: str, metadata: dict[str, Any] | None = None) -> None:
-        with self._lock:
-            subs_snapshot = list(self._subs)
-        for sub in subs_snapshot:
+        for sub in self._snapshot():
             if self._health.is_open(sub.name):
                 continue
             try:
@@ -435,9 +430,7 @@ class MultiMemoryProvider(MemoryProvider):
                 logger.warning("[multi-memory] on_memory_write %s: %s", sub.name, exc)
 
     def on_delegation(self, task: str = "", result: str = "", *, child_session_id: str = "", **kwargs: Any) -> None:
-        with self._lock:
-            subs_snapshot = list(self._subs)
-        for sub in subs_snapshot:
+        for sub in self._snapshot():
             if self._health.is_open(sub.name):
                 continue
             try:
@@ -448,10 +441,8 @@ class MultiMemoryProvider(MemoryProvider):
                 logger.warning("[multi-memory] on_delegation %s: %s", sub.name, exc)
 
     def on_pre_compress(self, messages: list[dict[str, Any]]) -> str:
-        with self._lock:
-            subs_snapshot = list(self._subs)
         parts = []
-        for sub in subs_snapshot:
+        for sub in self._snapshot():
             if self._health.is_open(sub.name):
                 continue
             try:
@@ -465,6 +456,20 @@ class MultiMemoryProvider(MemoryProvider):
         return "\n\n".join(parts) if parts else ""
 
 
+# ── Helpers ────────────────────────────────────────────────────────────────
+
+def _close_or_shutdown(sub: _SubProviderAdapter, name: str) -> None:
+    """Close or shutdown a sub-provider, preferring close()."""
+    try:
+        close_fn = getattr(sub, 'close', None)
+        if callable(close_fn):
+            close_fn()
+        else:
+            sub.shutdown()
+    except Exception as exc:
+        logger.warning("[multi-memory] shutdown %s: %s", name, exc)
+
+
 def _normalise_multi_config(cfg: dict | None) -> dict:
     """Return a unified backends dict from *either* config shape.
 
@@ -474,7 +479,8 @@ def _normalise_multi_config(cfg: dict | None) -> dict:
     Both formats are accepted.  ``providers`` list wins when non-empty.
     Returns ``{}`` on absence or parse failure.
     """
-    cfg = cfg or {}
+    if not isinstance(cfg, dict):
+        return {}
     prov_list = cfg.get("providers") or []
     if isinstance(prov_list, list) and prov_list:
         return {p: {} for p in prov_list}
@@ -492,12 +498,10 @@ def _load_backends_from_config(config: dict) -> list[_SubProviderAdapter]:
     PLAN spec format (``multi.backends: dict``).  ``_normalise_multi_config``
     merges both into a single ``{key: enabled}`` dict before adapter loading.
     """
-    backends: list = []
+    backends: list[_SubProviderAdapter] = []
     backend_cfg = _normalise_multi_config(config.get("memory") or {})
     for key, enabled in backend_cfg.items():
-        # Backend is disabled only if explicitly False/None/0/"no",
-        # not for empty dict {} which means "enabled with no extra config"
-        if enabled is False or enabled is None or enabled in (0, "0", "false", "False", "no"):  # also accept "False" (capital F, still string) since Python reads it from YAML
+        if _is_disabled(enabled):
             continue
         for cls in _SUB_CLASSES:
             if cls.CONFIG_KEY == key:
@@ -523,7 +527,7 @@ def _load_backends_from_config(config: dict) -> list[_SubProviderAdapter]:
     return backends
 
 
-def _try_generic_backend(name: str, backends: list) -> None:
+def _try_generic_backend(name: str, backends: list[_SubProviderAdapter]) -> None:
     """Try to load a backend via Hermes's ``load_memory_provider()`` discovery.
 
     This enables custom/third-party backends that aren't hardcoded in the

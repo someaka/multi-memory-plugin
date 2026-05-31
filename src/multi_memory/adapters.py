@@ -1,9 +1,9 @@
 """Adapter layer that wraps Hermes MemoryProvider subclasses into a common interface.
 
-Each known backend (Mnemosyne, Mem0, Holographic, Honcho, Chroma, Pinecone,
-Weaviate, Qdrant, Milvus) has a thin ``_SubProviderAdapter`` subclass that
-delegates lifecycle calls to the real provider while prefixing tool names
-to avoid collisions.
+Each known backend (Mnemosyne, Mem0, Holographic, Honcho, OpenViking,
+Hindsight, RetainDB, ByteRover, Supermemory) has a thin ``_SubProviderAdapter``
+subclass that delegates lifecycle calls to the real provider while prefixing
+tool names to avoid collisions.
 
 Usage
 -----
@@ -42,6 +42,20 @@ def _try_import(module: str, cls: str) -> type | None:
         return None
 
 
+def _renorm_schemas(raw: list[dict], prefix: str) -> list[dict]:
+    """Strip existing prefix, re-add — guarantees exactly one prefix.
+
+    Handles backends that self-prefix (``holographic_store``) and
+    backends that don't (``fact_store``) uniformly.
+    """
+    pfx = f"{prefix}_"
+    stripped = [
+        {**s, "name": s["name"][len(pfx):] if s["name"].startswith(pfx) else s["name"]}
+        for s in raw
+    ]
+    return [{**s, "name": f"{prefix}_{s['name']}"} for s in stripped]
+
+
 class _SubProviderAdapter:
     """Base class for all sub-provider adapters — thin delegation wrapper."""
 
@@ -58,6 +72,9 @@ class _SubProviderAdapter:
                 f"(pip install {self.CONFIG_KEY!r})"
             )
         self._delegate = real_cls()
+        # Cache introspection results — delegate doesn't change after init
+        self._cached_write_mode: str | None = None
+        self._cached_accepts_messages: bool | None = None
 
     @property
     def name(self) -> str:
@@ -74,7 +91,7 @@ class _SubProviderAdapter:
 
     def get_tool_schemas(self) -> list[dict]:
         raw = self._delegate.get_tool_schemas()
-        return [{**s, "name": f"{self.PREFIX}_{s['name']}"} for s in raw]
+        return _renorm_schemas(raw, self.PREFIX)
 
     def handle_tool_call(self, tool_name: str, args: dict, **kwargs: Any) -> str:
         inner = tool_name[len(self.PREFIX) + 1:]
@@ -119,7 +136,7 @@ class _SubProviderAdapter:
     def on_pre_compress(self, messages: list[dict[str, Any]]) -> str:
         return self._delegate.on_pre_compress(messages)
 
-    # -- Introspection helpers (ported from fork's MemoryManager) ----------
+    # -- Introspection helpers (cached) ------------------------------------
 
     def _metadata_write_mode(self) -> str:
         """Detect how the delegate's on_memory_write accepts metadata.
@@ -128,37 +145,45 @@ class _SubProviderAdapter:
         'positional' if it accepts 4 positional args, or 'legacy' if
         it only accepts 3 args (no metadata).
         """
+        if self._cached_write_mode is not None:
+            return self._cached_write_mode
         try:
             sig = inspect.signature(self._delegate.on_memory_write)
         except (TypeError, ValueError):
-            return "keyword"
+            self._cached_write_mode = "keyword"
+            return self._cached_write_mode
         params = list(sig.parameters.values())
         if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params):
-            return "keyword"
-        if "metadata" in sig.parameters:
-            return "keyword"
-        accepted = [
-            p for p in params
-            if p.kind in {
-                inspect.Parameter.POSITIONAL_ONLY,
-                inspect.Parameter.POSITIONAL_OR_KEYWORD,
-                inspect.Parameter.KEYWORD_ONLY,
-            }
-        ]
-        if len(accepted) >= 4:
-            return "positional"
-        return "legacy"
+            self._cached_write_mode = "keyword"
+        elif "metadata" in sig.parameters:
+            self._cached_write_mode = "keyword"
+        else:
+            accepted = [
+                p for p in params
+                if p.kind in {
+                    inspect.Parameter.POSITIONAL_ONLY,
+                    inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                    inspect.Parameter.KEYWORD_ONLY,
+                }
+            ]
+            self._cached_write_mode = "positional" if len(accepted) >= 4 else "legacy"
+        return self._cached_write_mode
 
     def _sync_accepts_messages(self) -> bool:
         """Return whether the delegate's sync_turn accepts a messages keyword."""
+        if self._cached_accepts_messages is not None:
+            return self._cached_accepts_messages
         try:
             sig = inspect.signature(self._delegate.sync_turn)
         except (TypeError, ValueError):
-            return True
+            self._cached_accepts_messages = True
+            return self._cached_accepts_messages
         params = list(sig.parameters.values())
-        if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params):
-            return True
-        return "messages" in sig.parameters
+        self._cached_accepts_messages = (
+            any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params)
+            or "messages" in sig.parameters
+        )
+        return self._cached_accepts_messages
 
     def close(self) -> None:
         """Close underlying connections.  Override in subclasses that manage
@@ -180,9 +205,12 @@ class _GenericAdapter(_SubProviderAdapter):
     CONFIG_KEY = ""  # Set dynamically
     PREFIX = ""      # No prefix — provider handles its own names
 
-    def __init__(self, provider, name: str, **kwargs: Any):
+    def __init__(self, provider: Any, name: str, **kwargs: Any):
         self._delegate = provider
         self._name = name
+        # Cache introspection results
+        self._cached_write_mode: str | None = None
+        self._cached_accepts_messages: bool | None = None
 
     @property
     def name(self) -> str:
@@ -196,6 +224,8 @@ class _GenericAdapter(_SubProviderAdapter):
         # Don't strip prefix — pass through as-is
         return self._delegate.handle_tool_call(tool_name, args, **kwargs)
 
+
+# ── Concrete adapters ──────────────────────────────────────────────────────
 
 class _MnemosyneAdapter(_SubProviderAdapter):
     CONFIG_KEY = "mnemosyne"
@@ -214,6 +244,8 @@ class _MnemosyneAdapter(_SubProviderAdapter):
                     "[multi-memory] backend 'mnemosyne' not found via plugin loader"
                 )
             self._delegate = provider
+            self._cached_write_mode = None
+            self._cached_accepts_messages = None
         except ImportError:
             # Fallback to standard import when running outside Hermes
             super().__init__(**kwargs)
@@ -242,15 +274,8 @@ class _Mem0Adapter(_SubProviderAdapter):
     PREFIX     = "mem0"
 
     def get_tool_schemas(self) -> list[dict]:
-        # Mem0's tools are already prefixed ("mem0_profile") — strip the
-        # existing prefix so we end up with exactly one "mem0_" prefix.
         raw = self._delegate.get_tool_schemas()
-        pfx = f"{self.PREFIX}_"
-        stripped = [
-            {**s, "name": s["name"][len(pfx):] if s["name"].startswith(pfx) else s["name"]}
-            for s in raw
-        ]
-        return [{**s, "name": f"{self.PREFIX}_{s['name']}"} for s in stripped]
+        return _renorm_schemas(raw, self.PREFIX)
 
     def handle_tool_call(self, tool_name: str, args: dict, **kwargs: Any) -> str:
         # Mem0 expects full prefixed names ("mem0_search") — don't strip.
@@ -264,16 +289,8 @@ class _HolographicAdapter(_SubProviderAdapter):
     PREFIX     = "holographic"
 
     def get_tool_schemas(self) -> list[dict]:
-        # Holographic tools may be self-prefixed ("holographic_store") or
-        # unprefixed ("fact_store") depending on version — strip+re-add to
-        # guarantee exactly one prefix.
         raw = self._delegate.get_tool_schemas()
-        pfx = f"{self.PREFIX}_"
-        stripped = [
-            {**s, "name": s["name"][len(pfx):] if s["name"].startswith(pfx) else s["name"]}
-            for s in raw
-        ]
-        return [{**s, "name": f"{self.PREFIX}_{s['name']}"} for s in stripped]
+        return _renorm_schemas(raw, self.PREFIX)
 
     def handle_tool_call(self, tool_name: str, args: dict, **kwargs: Any) -> str:
         # Holographic expects full prefixed names — don't strip.
@@ -287,15 +304,8 @@ class _HonchoAdapter(_SubProviderAdapter):
     PREFIX     = "honcho"
 
     def get_tool_schemas(self) -> list[dict]:
-        # Honcho's tools are already prefixed ("honcho_profile") — strip the
-        # existing prefix so the base class adds exactly one "honcho_" prefix.
         raw = self._delegate.get_tool_schemas()
-        pfx = f"{self.PREFIX}_"
-        stripped = [
-            {**s, "name": s["name"][len(pfx):] if s["name"].startswith(pfx) else s["name"]}
-            for s in raw
-        ]
-        return [{**s, "name": f"{self.PREFIX}_{s['name']}"} for s in stripped]
+        return _renorm_schemas(raw, self.PREFIX)
 
     def handle_tool_call(self, tool_name: str, args: dict, **kwargs: Any) -> str:
         # Honcho expects full prefixed names ("honcho_search") — don't strip.
@@ -309,14 +319,8 @@ class _OpenVikingAdapter(_SubProviderAdapter):
     PREFIX     = "viking"  # tool prefix differs from config key
 
     def get_tool_schemas(self) -> list[dict]:
-        # OpenViking tools are self-prefixed ("viking_search") — strip+re-add.
         raw = self._delegate.get_tool_schemas()
-        pfx = f"{self.PREFIX}_"
-        stripped = [
-            {**s, "name": s["name"][len(pfx):] if s["name"].startswith(pfx) else s["name"]}
-            for s in raw
-        ]
-        return [{**s, "name": f"{self.PREFIX}_{s['name']}"} for s in stripped]
+        return _renorm_schemas(raw, self.PREFIX)
 
     def handle_tool_call(self, tool_name: str, args: dict, **kwargs: Any) -> str:
         # OpenViking expects full prefixed names ("viking_search") — don't strip.
@@ -330,14 +334,8 @@ class _HindsightAdapter(_SubProviderAdapter):
     PREFIX     = "hindsight"
 
     def get_tool_schemas(self) -> list[dict]:
-        # Hindsight tools are self-prefixed ("hindsight_retain") — strip+re-add.
         raw = self._delegate.get_tool_schemas()
-        pfx = f"{self.PREFIX}_"
-        stripped = [
-            {**s, "name": s["name"][len(pfx):] if s["name"].startswith(pfx) else s["name"]}
-            for s in raw
-        ]
-        return [{**s, "name": f"{self.PREFIX}_{s['name']}"} for s in stripped]
+        return _renorm_schemas(raw, self.PREFIX)
 
     def handle_tool_call(self, tool_name: str, args: dict, **kwargs: Any) -> str:
         # Hindsight expects full prefixed names ("hindsight_retain") — don't strip.
@@ -360,14 +358,8 @@ class _RetainDBAdapter(_SubProviderAdapter):
             self._delegate.shutdown()
 
     def get_tool_schemas(self) -> list[dict]:
-        # RetainDB tools are self-prefixed ("retaindb_profile") — strip+re-add.
         raw = self._delegate.get_tool_schemas()
-        pfx = f"{self.PREFIX}_"
-        stripped = [
-            {**s, "name": s["name"][len(pfx):] if s["name"].startswith(pfx) else s["name"]}
-            for s in raw
-        ]
-        return [{**s, "name": f"{self.PREFIX}_{s['name']}"} for s in stripped]
+        return _renorm_schemas(raw, self.PREFIX)
 
     def handle_tool_call(self, tool_name: str, args: dict, **kwargs: Any) -> str:
         # RetainDB expects full prefixed names ("retaindb_profile") — don't strip.
@@ -381,14 +373,8 @@ class _ByteRoverAdapter(_SubProviderAdapter):
     PREFIX     = "brv"  # tool prefix differs from config key
 
     def get_tool_schemas(self) -> list[dict]:
-        # ByteRover tools are self-prefixed ("brv_query") — strip+re-add.
         raw = self._delegate.get_tool_schemas()
-        pfx = f"{self.PREFIX}_"
-        stripped = [
-            {**s, "name": s["name"][len(pfx):] if s["name"].startswith(pfx) else s["name"]}
-            for s in raw
-        ]
-        return [{**s, "name": f"{self.PREFIX}_{s['name']}"} for s in stripped]
+        return _renorm_schemas(raw, self.PREFIX)
 
     def handle_tool_call(self, tool_name: str, args: dict, **kwargs: Any) -> str:
         # ByteRover expects full prefixed names ("brv_query") — don't strip.
@@ -402,16 +388,9 @@ class _SupermemoryAdapter(_SubProviderAdapter):
     PREFIX     = "supermemory"
 
     def get_tool_schemas(self) -> list[dict]:
-        # Supermemory tools are self-prefixed ("supermemory_store") — strip+re-add.
         raw = self._delegate.get_tool_schemas()
-        pfx = f"{self.PREFIX}_"
-        stripped = [
-            {**s, "name": s["name"][len(pfx):] if s["name"].startswith(pfx) else s["name"]}
-            for s in raw
-        ]
-        return [{**s, "name": f"{self.PREFIX}_{s['name']}"} for s in stripped]
+        return _renorm_schemas(raw, self.PREFIX)
 
     def handle_tool_call(self, tool_name: str, args: dict, **kwargs: Any) -> str:
         # Supermemory expects full prefixed names ("supermemory_store") — don't strip.
         return self._delegate.handle_tool_call(tool_name, args, **kwargs)
-

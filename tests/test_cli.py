@@ -1,4 +1,5 @@
 """Tests for the multi-memory CLI commands."""
+# ruff: noqa: PLR2004  # magic numbers in tests are normal
 
 from __future__ import annotations
 
@@ -9,12 +10,12 @@ from unittest import mock
 import pytest
 
 from multi_memory.cli import (
-    register_cli,
-    multi_command,
-    _cmd_status,
-    _cmd_list,
     _cmd_add,
+    _cmd_list,
     _cmd_remove,
+    _cmd_status,
+    multi_command,
+    register_cli,
 )
 
 
@@ -170,7 +171,7 @@ class TestCmdAdd:
         saved = {}
         args = argparse.Namespace(backend="mem0")
         with mock.patch("multi_memory.cli.load_config", return_value=config), \
-             mock.patch("multi_memory.cli.save_config", side_effect=lambda c: saved.update(c)):
+             mock.patch("multi_memory.cli.save_config", side_effect=saved.update):
             _cmd_add(args)
         assert "memory" in saved
 
@@ -200,7 +201,7 @@ class TestCmdRemove:
         saved = {}
         args = argparse.Namespace(backend="mem0")
         with mock.patch("multi_memory.cli.load_config", return_value=config), \
-             mock.patch("multi_memory.cli.save_config", side_effect=lambda c: saved.update(c)):
+             mock.patch("multi_memory.cli.save_config", side_effect=saved.update):
             _cmd_remove(args)
         out = capsys.readouterr().out
         assert "Removed" in out
@@ -223,11 +224,17 @@ class TestCmdRemove:
 
     def test_remove_last_backend(self, capsys):
         """remove last backend shows built-in only message."""
-        config = {"memory": {"multi": {"backends": {"mem0": {}}}, "providers": ["mem0"], "provider": "mem0"}}
+        config = {
+            "memory": {
+                "multi": {"backends": {"mem0": {}}},
+                "providers": ["mem0"],
+                "provider": "mem0",
+            }
+        }
         saved = {}
         args = argparse.Namespace(backend="mem0")
         with mock.patch("multi_memory.cli.load_config", return_value=config), \
-             mock.patch("multi_memory.cli.save_config", side_effect=lambda c: saved.update(c)):
+             mock.patch("multi_memory.cli.save_config", side_effect=saved.update):
             _cmd_remove(args)
         out = capsys.readouterr().out
         assert "built-in only" in out

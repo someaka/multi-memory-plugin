@@ -26,7 +26,6 @@ Or use the INVESTIGATION-C canonical::
 from __future__ import annotations
 
 import logging
-import os
 import threading
 from typing import Any
 
@@ -56,33 +55,40 @@ except ImportError:
         def get_tool_schemas(self) -> list[dict]: ...
         @abc.abstractmethod
         def handle_tool_call(self, tool_name: str, args: dict, **kwargs) -> str: ...
-        def shutdown(self) -> None: pass
+        def shutdown(self) -> None: pass  # noqa: B027
         def system_prompt_block(self) -> str: return ""
         def prefetch(self, query: str, **kwargs) -> str: return ""
-        def queue_prefetch(self, query: str, **kwargs) -> None: pass
-        def sync_turn(self, user_content: str, assistant_content: str, **kwargs) -> None: pass
-        def on_turn_start(self, turn_number: int = 0, message: str = "", **kwargs: Any) -> None: pass
-        def on_session_end(self, messages: list[dict]) -> None: pass
-        def on_session_switch(self, new_session_id: str = "", *, parent_session_id: str = "", reset: bool = False, **kwargs: Any) -> None: pass
-        def on_memory_write(self, action: str, target: str, content: str, metadata: dict[str, Any] | None = None) -> None: pass
-        def on_delegation(self, task: str = "", result: str = "", *, child_session_id: str = "", **kwargs: Any) -> None: pass
+        def queue_prefetch(self, query: str, **kwargs) -> None: pass  # noqa: B027
+        def sync_turn(self, user_content: str, assistant_content: str, **kwargs) -> None: pass  # noqa: B027
+        def on_turn_start(self, turn_number: int = 0, message: str = "",  # noqa: B027
+                           **kwargs: Any) -> None: pass
+        def on_session_end(self, messages: list[dict]) -> None: pass  # noqa: B027
+        def on_session_switch(self, new_session_id: str = "",  # noqa: B027
+                               *, parent_session_id: str = "",
+                               reset: bool = False,
+                               **kwargs: Any) -> None: pass
+        def on_memory_write(self, action: str, target: str, content: str,  # noqa: B027
+                             metadata: dict[str, Any] | None = None) -> None: pass
+        def on_delegation(self, task: str = "", result: str = "",  # noqa: B027
+                           *, child_session_id: str = "",
+                           **kwargs: Any) -> None: pass
         def on_pre_compress(self, messages: list[dict]) -> str: return ""
 from .adapters import (
-    _SubProviderAdapter,
+    _ByteRoverAdapter,
     _GenericAdapter,
-    _MnemosyneAdapter,
-    _Mem0Adapter,
+    _HindsightAdapter,
     _HolographicAdapter,
     _HonchoAdapter,
+    _Mem0Adapter,
+    _MnemosyneAdapter,
     _OpenVikingAdapter,
-    _HindsightAdapter,
     _RetainDBAdapter,
-    _ByteRoverAdapter,
+    _SubProviderAdapter,
     _SupermemoryAdapter,
 )
 from .budget import ToolBudgetWarning
-from .validate import NamespaceValidator
 from .health import HealthTracker
+from .validate import NamespaceValidator
 
 __all__ = [
     "MultiMemoryProvider",
@@ -164,8 +170,8 @@ class MultiMemoryProvider(MemoryProvider):
     def _load_config(self) -> None:
         """Read config.yaml and populate sub-adapters."""
         try:
-            hermes_home = os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes"))
-            cfg_path = os.path.join(hermes_home, "config.yaml")
+            from .config import _get_config_path
+            cfg_path = _get_config_path()
             with open(cfg_path) as f:
                 cfg = yaml.safe_load(f) or {}
             if not isinstance(cfg, dict):
@@ -183,7 +189,7 @@ class MultiMemoryProvider(MemoryProvider):
                     logger.info(
                         "[multi-memory] %s validated (%d tools)", adapter.name, len(schemas)
                     )
-                except Exception as exc:
+                except Exception as exc:  # noqa: PERF203
                     logger.warning(
                         "[multi-memory] %s failed schema validation — NOT registered: %s",
                         adapter.name, exc,
@@ -209,7 +215,8 @@ class MultiMemoryProvider(MemoryProvider):
         with self._lock:
             return list(self._subs)
 
-    def _fan_out(self, method: str, *args: Any, **kwargs: Any) -> list[tuple[_SubProviderAdapter, Any]]:
+    def _fan_out(self, method: str, *args: Any,
+                  **kwargs: Any) -> list[tuple[_SubProviderAdapter, Any]]:
         """Call *method* on every active sub, returning [(sub, result), ...].
 
         Subs with circuit open are skipped.  Exceptions are caught and logged;
@@ -287,13 +294,16 @@ class MultiMemoryProvider(MemoryProvider):
         for sub in subs:
             try:
                 return sub.handle_tool_call(tool_name, args, **kwargs)
-            except Exception as exc:
+            except Exception as exc:  # noqa: PERF203
                 errors.append(f"{sub.name}: {exc}")
                 logger.warning(
                     "[multi-memory] fallback %s for '%s': %s",
                     sub.name, tool_name, exc,
                 )
-        return tool_error(f"No sub-provider handles tool '{tool_name}' — tried: {'; '.join(errors)}")
+        return tool_error(
+            f"No sub-provider handles tool '{tool_name}'"
+            f" — tried: {'; '.join(errors)}"
+        )
 
     # ─── Runtime sub-provider management ──────────────────────────────────
 
@@ -387,27 +397,36 @@ class MultiMemoryProvider(MemoryProvider):
     def queue_prefetch(self, query: str, *, session_id: str = "") -> None:
         self._fan_out("queue_prefetch", query, session_id=session_id)
 
-    def sync_turn(self, user_content: str, assistant_content: str, *, session_id: str = "", **kwargs: Any) -> None:
+    def sync_turn(self, user_content: str, assistant_content: str, *,
+                   session_id: str = "", **kwargs: Any) -> None:
         messages = kwargs.get("messages")
         self._fan_out("sync_turn", user_content, assistant_content,
                        session_id=session_id, messages=messages)
 
-    def on_turn_start(self, turn_number: int = 0, message: str = "", **kwargs: Any) -> None:
+    def on_turn_start(self, turn_number: int = 0, message: str = "",
+                       **kwargs: Any) -> None:
         self._fan_out("on_turn_start", turn_number, message, **kwargs)
 
     def on_session_end(self, messages: list[dict]) -> None:
         self._fan_out("on_session_end", messages)
 
-    def on_session_switch(self, new_session_id: str = "", *, parent_session_id: str = "", reset: bool = False, **kwargs: Any) -> None:
+    def on_session_switch(self, new_session_id: str = "", *,
+                           parent_session_id: str = "",
+                           reset: bool = False,
+                           **kwargs: Any) -> None:
         if not new_session_id:
             return
         self._fan_out("on_session_switch", new_session_id,
-                       parent_session_id=parent_session_id, reset=reset, **kwargs)
+                       parent_session_id=parent_session_id,
+                       reset=reset, **kwargs)
 
-    def on_memory_write(self, action: str, target: str, content: str, metadata: dict[str, Any] | None = None) -> None:
+    def on_memory_write(self, action: str, target: str, content: str,
+                         metadata: dict[str, Any] | None = None) -> None:
         self._fan_out("on_memory_write", action, target, content, metadata)
 
-    def on_delegation(self, task: str = "", result: str = "", *, child_session_id: str = "", **kwargs: Any) -> None:
+    def on_delegation(self, task: str = "", result: str = "", *,
+                       child_session_id: str = "",
+                       **kwargs: Any) -> None:
         self._fan_out("on_delegation", task, result,
                        child_session_id=child_session_id, **kwargs)
 
@@ -442,9 +461,9 @@ def _normalise_multi_config(cfg: dict | None) -> dict:
     """
     if not isinstance(cfg, dict):
         return {}
-    prov_list = cfg.get("providers") or []
-    if isinstance(prov_list, list) and prov_list:
-        return {p: {} for p in prov_list}
+    providers = cfg.get("providers")
+    if isinstance(providers, list) and providers:
+        return {p: {} for p in providers}
     multi_cfg = cfg.get("multi") or {}
     backends = multi_cfg.get("backends") or {}
     if isinstance(backends, dict):
@@ -465,7 +484,7 @@ def _load_backends_from_config(config: dict) -> list[_SubProviderAdapter]:
         if _is_disabled(enabled):
             continue
         for cls in _SUB_CLASSES:
-            if cls.CONFIG_KEY == key:
+            if key == cls.CONFIG_KEY:
                 try:
                     adapter = cls()
                     if adapter.is_available():

@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import os
 import sys
-
 from importlib.util import find_spec
 
 import pytest

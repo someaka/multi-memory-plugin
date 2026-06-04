@@ -1,8 +1,8 @@
 """Tests for multi_memory.discovery — backend discovery and installation detection."""
+# ruff: noqa: PLR2004  # magic numbers in tests are normal
 from __future__ import annotations
 
 from unittest import mock
-
 
 from multi_memory.discovery import (
     _BACKEND_REGISTRY,

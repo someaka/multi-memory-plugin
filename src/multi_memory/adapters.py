@@ -13,10 +13,10 @@ in ``__init__.py`` discovers and instantiates them from config.
 
 from __future__ import annotations
 
-from importlib.util import find_spec
 import importlib
 import inspect
 import logging
+from importlib.util import find_spec
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -56,6 +56,9 @@ def _renorm_schemas(raw: list[dict], prefix: str) -> list[dict]:
             name = name[len(pfx):]
         result.append({**s, "name": f"{prefix}_{name}"})
     return result
+
+
+_MIN_POS_ARGS_FOR_METADATA = 4  # on_memory_write(action, target, content, metadata)
 
 
 class _SubProviderAdapter:
@@ -106,11 +109,19 @@ class _SubProviderAdapter:
     def queue_prefetch(self, query: str, *, session_id: str = "") -> None:
         self._delegate.queue_prefetch(query, session_id=session_id)
 
-    def sync_turn(self, user_content: str, assistant_content: str, *, session_id: str = "", messages: list[dict] | None = None) -> None:
+    def sync_turn(self, user_content: str, assistant_content: str, *,
+                   session_id: str = "",
+                   messages: list[dict] | None = None) -> None:
         if messages is not None and self._sync_accepts_messages():
-            self._delegate.sync_turn(user_content, assistant_content, session_id=session_id, messages=messages)
+            self._delegate.sync_turn(
+                user_content, assistant_content,
+                session_id=session_id, messages=messages,
+            )
         else:
-            self._delegate.sync_turn(user_content, assistant_content, session_id=session_id)
+            self._delegate.sync_turn(
+                user_content, assistant_content,
+                session_id=session_id,
+            )
 
     def system_prompt_block(self) -> str:
         return self._delegate.system_prompt_block()
@@ -121,10 +132,18 @@ class _SubProviderAdapter:
     def on_session_end(self, messages: list[dict]) -> None:
         self._delegate.on_session_end(messages)
 
-    def on_session_switch(self, new_session_id: str = "", *, parent_session_id: str = "", reset: bool = False, **kwargs: Any) -> None:
-        self._delegate.on_session_switch(new_session_id, parent_session_id=parent_session_id, reset=reset, **kwargs)
+    def on_session_switch(self, new_session_id: str = "", *,
+                           parent_session_id: str = "",
+                           reset: bool = False,
+                           **kwargs: Any) -> None:
+        self._delegate.on_session_switch(
+            new_session_id,
+            parent_session_id=parent_session_id,
+            reset=reset, **kwargs,
+        )
 
-    def on_memory_write(self, action: str, target: str, content: str, metadata: dict[str, Any] | None = None) -> None:
+    def on_memory_write(self, action: str, target: str, content: str,
+                         metadata: dict[str, Any] | None = None) -> None:
         mode = self._metadata_write_mode()
         if mode == "keyword":
             self._delegate.on_memory_write(action, target, content, metadata=dict(metadata or {}))
@@ -133,8 +152,13 @@ class _SubProviderAdapter:
         else:
             self._delegate.on_memory_write(action, target, content)
 
-    def on_delegation(self, task: str = "", result: str = "", *, child_session_id: str = "", **kwargs: Any) -> None:
-        self._delegate.on_delegation(task, result, child_session_id=child_session_id, **kwargs)
+    def on_delegation(self, task: str = "", result: str = "", *,
+                       child_session_id: str = "",
+                       **kwargs: Any) -> None:
+        self._delegate.on_delegation(
+            task, result,
+            child_session_id=child_session_id, **kwargs,
+        )
 
     def on_pre_compress(self, messages: list[dict[str, Any]]) -> str:
         return self._delegate.on_pre_compress(messages)
@@ -156,9 +180,10 @@ class _SubProviderAdapter:
             self._cached_write_mode = "keyword"
             return self._cached_write_mode
         params = list(sig.parameters.values())
-        if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params):
-            self._cached_write_mode = "keyword"
-        elif "metadata" in sig.parameters:
+        if (
+            any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params)
+            or "metadata" in sig.parameters
+        ):
             self._cached_write_mode = "keyword"
         else:
             accepted = [
@@ -169,7 +194,11 @@ class _SubProviderAdapter:
                     inspect.Parameter.KEYWORD_ONLY,
                 }
             ]
-            self._cached_write_mode = "positional" if len(accepted) >= 4 else "legacy"
+            self._cached_write_mode = (
+                "positional"
+                if len(accepted) >= _MIN_POS_ARGS_FOR_METADATA
+                else "legacy"
+            )
         return self._cached_write_mode
 
     def _sync_accepts_messages(self) -> bool:

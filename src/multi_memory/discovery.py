@@ -8,8 +8,8 @@ backends and returns a list of backend descriptors, each with an
 from __future__ import annotations
 
 import os
-from pathlib import Path
 from importlib.util import find_spec
+from pathlib import Path
 
 # Each entry: (config_key, module_path, label)
 _BACKEND_REGISTRY: list[tuple[str, str, str]] = [

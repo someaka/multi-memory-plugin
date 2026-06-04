@@ -86,11 +86,7 @@ class HealthTracker:
 
             cooldown = self._cooldown.get(backend_key, _HALF_OPEN_COOLDOWN_SECONDS)
             elapsed = time.monotonic() - opened
-            if elapsed >= cooldown:
-                # Half-open: allow one probe
-                return False
-
-            return True  # still in cooldown
+            return elapsed < cooldown  # True = still in cooldown, False = half-open
 
     def reset(self, backend_key: str) -> None:
         """Manually reset a backend to healthy state."""
@@ -110,7 +106,8 @@ def timeout_wrapper(fn: Any, timeout: float = 30.0) -> Any:
        means the function actually runs in a separate thread.  If *fn*
        mutates shared state, ensure it is thread-safe.
     """
-    from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FutTimeout  # noqa: PLC0415
+    from concurrent.futures import ThreadPoolExecutor  # noqa: PLC0415
+    from concurrent.futures import TimeoutError as _FutTimeout  # noqa: PLC0415
 
     with ThreadPoolExecutor(max_workers=1) as pool:
         future = pool.submit(fn)

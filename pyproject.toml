@@ -29,3 +29,10 @@ test        = ["pytest>=7", "pytest-cov>=4", "ruff"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+ignore = ["PLC0415"]  # intentional conditional imports
+select = ["E", "W", "F", "I", "N", "UP", "B", "SIM", "C4", "PERF", "PL"]

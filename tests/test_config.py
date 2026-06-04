@@ -3,9 +3,10 @@ from __future__ import annotations
 
 from unittest import mock
 
-from multi_memory import _normalise_multi_config, _load_backends_from_config
-from multi_memory.config import load_multi_config, get_enabled_backends
 from conftest import requires_holographic
+
+from multi_memory import _load_backends_from_config, _normalise_multi_config
+from multi_memory.config import get_enabled_backends, load_multi_config
 
 
 class TestNormaliseMultiConfig:

@@ -109,7 +109,9 @@ class TestGenericAdapterInMultiMemory:
 
         fake_provider = FakeProvider()
         backends = []
-        cleanup = _mock_plugins_module(lambda name: fake_provider if name == "custom_backend" else None)
+        cleanup = _mock_plugins_module(
+            lambda name: fake_provider if name == "custom_backend" else None
+        )
         try:
             _try_generic_backend("custom_backend", backends)
         finally:

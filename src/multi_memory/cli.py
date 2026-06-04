@@ -177,11 +177,7 @@ def _cmd_list(args: argparse.Namespace) -> None:
     for name, desc in ALL_BACKENDS.items():
         is_active = name in active_set
 
-        if is_active:
-            status = "[active]"
-        else:
-            status = ""
-
+        status = "[active]" if is_active else ""
         marker = "→" if is_active else " "
         print(f"  {marker} {name:15s} {status:12s} {desc}")
 

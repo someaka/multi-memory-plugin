@@ -5,32 +5,33 @@ This file covers:
 - MultiMemoryProvider lifecycle hooks (initialize, shutdown, prefetch, etc.)
 - Edge cases: missing backend, error handling, adapter instantiation failures
 """
-# ruff: noqa: PLC0415  # intentional imports-inside-functions in tests
+# ruff: noqa: PLC0415, PLR2004  # intentional imports-inside-functions + magic numbers in tests
 from __future__ import annotations
 
 import os
 from unittest import mock
 
 import pytest
+from conftest import requires_holographic
 
-from multi_memory import MultiMemoryProvider, _normalise_multi_config, _load_backends_from_config
+from multi_memory import (
+    MultiMemoryProvider,
+    _load_backends_from_config,
+    _normalise_multi_config,
+)
 from multi_memory.adapters import (
-    _SubProviderAdapter,
+    _ByteRoverAdapter,
+    _HindsightAdapter,
     _HolographicAdapter,
+    _HonchoAdapter,
     _Mem0Adapter,
     _MnemosyneAdapter,
-    _HonchoAdapter,
     _OpenVikingAdapter,
-    _HindsightAdapter,
     _RetainDBAdapter,
-    _ByteRoverAdapter,
+    _SubProviderAdapter,
     _SupermemoryAdapter,
     _try_import,
 )
-
-
-from conftest import requires_holographic
-
 
 # ── Existing tests (preserved from original) ─────────────────────────────────
 
@@ -151,8 +152,13 @@ class TestTryImport:
         We test this by patching find_spec to return something truthy
         but import_module to raise.
         """
-        with mock.patch("multi_memory.adapters.find_spec", return_value=mock.MagicMock()):
-            with mock.patch("multi_memory.adapters.importlib.import_module", side_effect=ImportError("broken")):
+        with (
+            mock.patch("multi_memory.adapters.find_spec", return_value=mock.MagicMock()),
+            mock.patch(
+                "multi_memory.adapters.importlib.import_module",
+                side_effect=ImportError("broken"),
+            ),
+        ):
                 cls = _try_import("broken_module", "Cls")
                 assert cls is None
 
@@ -513,7 +519,10 @@ class TestLifecycleHooks:
         assert len(calls) == len(provider._subs)
         for _, args, kw in calls:
             # MagicMock has **kwargs so introspection uses keyword mode
-            assert kw.get("metadata") == {"origin": "test"} or (len(args) >= 4 and args[3] == {"origin": "test"})
+            assert (
+                kw.get("metadata") == {"origin": "test"}
+                or (len(args) >= 4 and args[3] == {"origin": "test"})
+            )
 
     def test_on_pre_compress_collects_results(self, provider):
         """on_pre_compress collects non-empty results from all subs."""
@@ -994,8 +1003,10 @@ class TestRegisterFunction:
         from multi_memory import register
 
         ctx = mock.MagicMock()
-        with mock.patch("multi_memory.MultiMemoryProvider._load_config"):
-            with mock.patch("multi_memory.MultiMemoryProvider._validate_namespaces"):
+        with (
+            mock.patch("multi_memory.MultiMemoryProvider._load_config"),
+            mock.patch("multi_memory.MultiMemoryProvider._validate_namespaces"),
+        ):
                 register(ctx)
         ctx.register_memory_provider.assert_called_once()
         args = ctx.register_memory_provider.call_args[0]
@@ -1012,8 +1023,8 @@ class TestLoadConfigEdgeCases:
         """When config.yaml doesn't exist, _load_config logs warning, doesn't crash."""
         import tempfile
 
-        with tempfile.TemporaryDirectory() as td:
-            with mock.patch.dict(os.environ, {"HERMES_HOME": td}):
+        with tempfile.TemporaryDirectory() as td, \
+             mock.patch.dict(os.environ, {"HERMES_HOME": td}):
                 p = MultiMemoryProvider()
                 # No config.yaml -> _load_config catches FileNotFoundError
                 # _subs should be empty (default)
@@ -1049,8 +1060,10 @@ class TestNamePropertyConsistency:
         assert hasattr(MultiMemoryProvider, "name")
 
     def test_instance_property_is_multi(self):
-        with mock.patch.object(MultiMemoryProvider, "_load_config"):
-            with mock.patch.object(MultiMemoryProvider, "_validate_namespaces"):
+        with (
+            mock.patch.object(MultiMemoryProvider, "_load_config"),
+            mock.patch.object(MultiMemoryProvider, "_validate_namespaces"),
+        ):
                 p = MultiMemoryProvider()
         assert p.name == "multi"
 
@@ -1059,8 +1072,10 @@ class TestNamePropertyConsistency:
         # name is a @property on the class, but the descriptor is always present
         assert hasattr(MultiMemoryProvider, "name")
         # Instance always returns "multi"
-        with mock.patch.object(MultiMemoryProvider, "_load_config"):
-            with mock.patch.object(MultiMemoryProvider, "_validate_namespaces"):
+        with (
+            mock.patch.object(MultiMemoryProvider, "_load_config"),
+            mock.patch.object(MultiMemoryProvider, "_validate_namespaces"),
+        ):
                 p = MultiMemoryProvider()
         assert p.name == "multi"
 
@@ -1190,7 +1205,9 @@ class TestHolographicAdapterLifecycle:
 
     def test_on_session_switch(self, adapter):
         adapter._delegate.on_session_switch = mock.MagicMock()
-        adapter.on_session_switch("new-sid", parent_session_id="old", reset=True)  # should not raise
+        adapter.on_session_switch(
+            "new-sid", parent_session_id="old", reset=True
+        )  # should not raise
         adapter._delegate.on_session_switch.assert_called_once_with(
             "new-sid", parent_session_id="old", reset=True
         )
@@ -1380,16 +1397,16 @@ class TestThreadSafety:
     def test_lock_exists(self):
         """MultiMemoryProvider.__init__ creates _lock (threading.RLock)."""
         import threading
-        with mock.patch.object(MultiMemoryProvider, '_load_config'):
-            with mock.patch.object(MultiMemoryProvider, '_validate_namespaces'):
+        with mock.patch.object(MultiMemoryProvider, '_load_config'), \
+             mock.patch.object(MultiMemoryProvider, '_validate_namespaces'):
                 prov = MultiMemoryProvider()
         assert isinstance(prov._lock, type(threading.RLock()))
 
     def test_concurrent_lifecycle_dispatch(self):
         """Multiple threads calling lifecycle hooks don't crash."""
         import threading
-        with mock.patch.object(MultiMemoryProvider, '_load_config'):
-            with mock.patch.object(MultiMemoryProvider, '_validate_namespaces'):
+        with mock.patch.object(MultiMemoryProvider, '_load_config'), \
+             mock.patch.object(MultiMemoryProvider, '_validate_namespaces'):
                 prov = MultiMemoryProvider()
 
         mock_sub = mock.MagicMock()
@@ -1418,8 +1435,8 @@ class TestThreadSafety:
 
     def test_handle_tool_call_snapshot(self):
         """handle_tool_call takes a snapshot under lock, dispatches outside."""
-        with mock.patch.object(MultiMemoryProvider, '_load_config'):
-            with mock.patch.object(MultiMemoryProvider, '_validate_namespaces'):
+        with mock.patch.object(MultiMemoryProvider, '_load_config'), \
+             mock.patch.object(MultiMemoryProvider, '_validate_namespaces'):
                 prov = MultiMemoryProvider()
 
         mock_sub = mock.MagicMock()
@@ -1437,8 +1454,8 @@ class TestSchemaFailureProtection:
 
     def test_broken_sub_skipped_others_continue(self):
         """A sub-adapter that raises from get_tool_schemas is skipped."""
-        with mock.patch.object(MultiMemoryProvider, '_load_config'):
-            with mock.patch.object(MultiMemoryProvider, '_validate_namespaces'):
+        with mock.patch.object(MultiMemoryProvider, '_load_config'), \
+             mock.patch.object(MultiMemoryProvider, '_validate_namespaces'):
                 prov = MultiMemoryProvider()
 
         good_sub = mock.MagicMock()
@@ -1457,8 +1474,8 @@ class TestSchemaFailureProtection:
 
     def test_all_subs_broken_returns_empty(self):
         """If all sub-adapters fail, returns empty list (not an exception)."""
-        with mock.patch.object(MultiMemoryProvider, '_load_config'):
-            with mock.patch.object(MultiMemoryProvider, '_validate_namespaces'):
+        with mock.patch.object(MultiMemoryProvider, '_load_config'), \
+             mock.patch.object(MultiMemoryProvider, '_validate_namespaces'):
                 prov = MultiMemoryProvider()
 
         broken = mock.MagicMock()
@@ -1471,8 +1488,8 @@ class TestSchemaFailureProtection:
 
     def test_schema_failure_records_health(self):
         """A failing sub-adapter's health is recorded as a failure."""
-        with mock.patch.object(MultiMemoryProvider, '_load_config'):
-            with mock.patch.object(MultiMemoryProvider, '_validate_namespaces'):
+        with mock.patch.object(MultiMemoryProvider, '_load_config'), \
+             mock.patch.object(MultiMemoryProvider, '_validate_namespaces'):
                 prov = MultiMemoryProvider()
 
         broken = mock.MagicMock()
@@ -1526,8 +1543,8 @@ class TestCloseMethod:
 
     def test_shutdown_prefers_close(self):
         """MultiMemoryProvider.shutdown() prefers close() over shutdown()."""
-        with mock.patch.object(MultiMemoryProvider, '_load_config'):
-            with mock.patch.object(MultiMemoryProvider, '_validate_namespaces'):
+        with mock.patch.object(MultiMemoryProvider, '_load_config'), \
+             mock.patch.object(MultiMemoryProvider, '_validate_namespaces'):
                 prov = MultiMemoryProvider()
 
         mock_sub = mock.MagicMock()

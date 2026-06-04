@@ -7,9 +7,10 @@ backends and returns a list of backend descriptors, each with an
 
 from __future__ import annotations
 
-import os
 from importlib.util import find_spec
 from pathlib import Path
+
+from multi_memory.config import _get_hermes_home
 
 # Each entry: (config_key, module_path, label)
 _BACKEND_REGISTRY: list[tuple[str, str, str]] = [
@@ -29,8 +30,8 @@ __all__ = ["discover_backends", "installed_backends"]
 
 def _is_mnemosyne_plugin_installed() -> bool:
     """Check if the Mnemosyne user-installed plugin exists."""
-    hermes_home = Path(os.environ.get("HERMES_HOME", Path.home() / ".hermes"))
-    plugin_dir = hermes_home / "plugins" / "mnemosyne"
+    hermes_home = _get_hermes_home()
+    plugin_dir = Path(hermes_home) / "plugins" / "mnemosyne"
     return plugin_dir.is_dir() and (plugin_dir / "__init__.py").exists()
 
 

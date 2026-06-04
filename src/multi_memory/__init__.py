@@ -170,7 +170,7 @@ class MultiMemoryProvider(MemoryProvider):
     def _load_config(self) -> None:
         """Read config.yaml and populate sub-adapters."""
         try:
-            from .config import _get_config_path
+            from .config import _get_config_path  # noqa: PLC0415
             cfg_path = _get_config_path()
             with open(cfg_path) as f:
                 cfg = yaml.safe_load(f) or {}

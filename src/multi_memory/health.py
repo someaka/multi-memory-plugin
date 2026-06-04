@@ -110,11 +110,11 @@ def timeout_wrapper(fn: Any, timeout: float = 30.0) -> Any:
        means the function actually runs in a separate thread.  If *fn*
        mutates shared state, ensure it is thread-safe.
     """
-    from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FutTimeout
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FutTimeout  # noqa: PLC0415
 
     with ThreadPoolExecutor(max_workers=1) as pool:
         future = pool.submit(fn)
         try:
             return future.result(timeout=timeout)
         except _FutTimeout:
-            raise TimeoutError(f"Operation timed out after {timeout}s")
+            raise TimeoutError(f"Operation timed out after {timeout}s") from None

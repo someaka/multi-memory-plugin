@@ -1,4 +1,5 @@
 """Tests for multi_memory.budget (ToolBudgetWarning) and validate (NamespaceValidator)."""
+# ruff: noqa: PLC0415  # intentional imports-inside-functions in tests
 from __future__ import annotations
 
 import logging

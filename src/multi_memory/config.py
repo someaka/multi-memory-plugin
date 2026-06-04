@@ -15,6 +15,8 @@ from typing import Any
 
 import yaml
 
+from multi_memory import _is_disabled
+
 logger = logging.getLogger(__name__)
 
 
@@ -76,7 +78,7 @@ def get_enabled_backends(config: dict | None = None) -> list[str]:
         if isinstance(backends, dict) and backends:
             return [
                 name for name, enabled in backends.items()
-                if enabled not in (False, None, 0, "0", "false", "False", "no")
+                if not _is_disabled(enabled)
             ]
 
     # List format

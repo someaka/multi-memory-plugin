@@ -5,6 +5,7 @@ This file covers:
 - MultiMemoryProvider lifecycle hooks (initialize, shutdown, prefetch, etc.)
 - Edge cases: missing backend, error handling, adapter instantiation failures
 """
+# ruff: noqa: PLC0415  # intentional imports-inside-functions in tests
 from __future__ import annotations
 
 import os
@@ -900,11 +901,12 @@ class TestSubProviderAdapterDelegation:
         # Original description preserved
         assert schemas[0]["description"] == "Search"
 
-    def test_handle_tool_call_strips_prefix(self):
+    def test_handle_tool_call_passes_through(self):
+        """handle_tool_call passes tool_name through unchanged (all backends do this)."""
         adapter, delegate = self._make_adapter()
         delegate.handle_tool_call.return_value = "result"
         result = adapter.handle_tool_call("test_search", {"q": "hello"})
-        delegate.handle_tool_call.assert_called_once_with("search", {"q": "hello"})
+        delegate.handle_tool_call.assert_called_once_with("test_search", {"q": "hello"})
         assert result == "result"
 
     def test_handle_tool_call_passes_kwargs(self):
@@ -912,7 +914,7 @@ class TestSubProviderAdapterDelegation:
         delegate.handle_tool_call.return_value = "ok"
         adapter.handle_tool_call("test_store", {"data": "x"}, session_id="s1")
         delegate.handle_tool_call.assert_called_once_with(
-            "store", {"data": "x"}, session_id="s1"
+            "test_store", {"data": "x"}, session_id="s1"
         )
 
     def test_prefetch_delegates(self):

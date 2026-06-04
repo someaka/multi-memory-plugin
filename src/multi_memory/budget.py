@@ -35,16 +35,25 @@ class ToolBudgetWarning:
 
     def __init__(self, threshold: int = DEFAULT_THRESHOLD) -> None:
         self._threshold = threshold
+        self._last_count: int | None = None  # cache: skip recompute when unchanged
 
     @property
     def threshold(self) -> int:
         return self._threshold
 
     def check(self, schemas: list[dict[str, Any]]) -> None:
-        """Log a warning if *schemas* exceeds the configured threshold."""
+        """Log a warning if *schemas* exceeds the configured threshold.
+
+        Caches the last count so the prefix breakdown is only recomputed
+        when the schema count actually changes (e.g. after add/remove).
+        """
         count = len(schemas)
         if count <= self._threshold:
+            self._last_count = count
             return
+        if count == self._last_count:
+            return  # unchanged — skip duplicate warning
+        self._last_count = count
 
         # Build a quick breakdown by prefix (text before first ``_``)
         by_prefix: dict[str, int] = {}

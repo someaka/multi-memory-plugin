@@ -14,6 +14,8 @@ from __future__ import annotations
 import argparse
 import json
 
+from multi_memory import _is_disabled
+
 try:
     from hermes_cli.config import load_config, save_config
 except ImportError:
@@ -98,7 +100,7 @@ def _get_active_backends(memory_cfg: dict) -> list[str]:
 
     if backends_dict:
         return [k for k, v in backends_dict.items()
-                if v is not False and v is not None and v not in (0, "0", "false", "False", "no")]
+                if not _is_disabled(v)]
     elif providers_list:
         return [p for p in providers_list if p]
     return []
@@ -202,7 +204,7 @@ def _cmd_add(args: argparse.Namespace) -> None:
     providers_list = memory_cfg.setdefault("providers", [])
 
     # Check if already active
-    if backend in backends_dict and backends_dict[backend] not in (False, None, 0, "0", "false", "False", "no"):
+    if backend in backends_dict and not _is_disabled(backends_dict[backend]):
         print(f"\n  '{backend}' is already active.\n")
         return
     if backend in providers_list:

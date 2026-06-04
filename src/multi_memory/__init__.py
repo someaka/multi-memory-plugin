@@ -141,6 +141,26 @@ class MultiMemoryProvider(MemoryProvider):
             names = [s.name for s in self._subs]
         return f"MultiMemoryProvider(backends={names})"
 
+    def format_config_display(self, config: dict) -> list[tuple[str, str]]:
+        """Return clean (key, display_value) pairs for hermes memory status.
+
+        Overrides the default raw-dict display so backends show as
+        ``backends: mnemosyne, openviking`` instead of
+        ``backends: {'mnemosyne': {}, 'openviking': {}}``.
+        """
+        multi_cfg = config.get("multi", {})
+        backends = multi_cfg.get("backends", {})
+        if backends:
+            items = ", ".join(
+                k if v in ({}, True) else f"{k}({v})"
+                for k, v in backends.items()
+            )
+            return [("backends", items)]
+        providers = config.get("providers", [])
+        if providers:
+            return [("providers", ", ".join(providers))]
+        return []
+
     def _load_config(self) -> None:
         """Read config.yaml and populate sub-adapters."""
         try:
@@ -189,6 +209,31 @@ class MultiMemoryProvider(MemoryProvider):
         with self._lock:
             return list(self._subs)
 
+    def _fan_out(self, method: str, *args: Any, **kwargs: Any) -> list[tuple[_SubProviderAdapter, Any]]:
+        """Call *method* on every active sub, returning [(sub, result), ...].
+
+        Subs with circuit open are skipped.  Exceptions are caught and logged;
+        results from failing subs are excluded from the return list.
+
+        This eliminates the repeated fire-and-forget / collect pattern that
+        every lifecycle hook previously duplicated.
+        """
+        results: list[tuple[_SubProviderAdapter, Any]] = []
+        for sub in self._snapshot():
+            if self._health.is_open(sub.name):
+                continue
+            try:
+                result = getattr(sub, method)(*args, **kwargs)
+                self._health.record_success(sub.name)
+                results.append((sub, result))
+            except Exception as exc:
+                self._health.record_failure(sub.name)
+                logger.warning(
+                    "[multi-memory] %s::%s(): %s",
+                    sub.name, method, exc,
+                )
+        return results
+
     # ─── 3 required abstract methods ────────────────────────────────────────
 
     @property
@@ -205,18 +250,7 @@ class MultiMemoryProvider(MemoryProvider):
         return bool(self._subs)
 
     def initialize(self, session_id: str, **kwargs: Any) -> None:
-        for sub in self._subs:
-            if self._health.is_open(sub.name):
-                logger.warning("[multi-memory] %s initialize() skipped (circuit open)", sub.name)
-                continue
-            try:
-                sub.initialize(session_id=session_id, **kwargs)
-                self._health.record_success(sub.name)
-            except Exception as exc:
-                self._health.record_failure(sub.name)
-                logger.warning(
-                    "[multi-memory] %s initialize() failed (%s)", sub.name, exc
-                )
+        self._fan_out("initialize", session_id=session_id, **kwargs)
 
     def get_tool_schemas(self) -> list[dict]:
         """Merge schemas: first-seen wins by tool name."""
@@ -342,117 +376,44 @@ class MultiMemoryProvider(MemoryProvider):
             self._subs.clear()
 
     def system_prompt_block(self) -> str:
-        parts = [b for s in self._snapshot() if (b := s.system_prompt_block())]
+        parts = [r for _, r in self._fan_out("system_prompt_block") if r]
         return "\n\n".join(parts) if parts else ""
 
     def prefetch(self, query: str, *, session_id: str = "") -> str:
-        parts = []
-        for sub in self._snapshot():
-            if self._health.is_open(sub.name):
-                continue
-            try:
-                r = sub.prefetch(query, session_id=session_id)
-                if r:
-                    parts.append(f"[{sub.name}] {r}")
-                self._health.record_success(sub.name)
-            except Exception as exc:
-                self._health.record_failure(sub.name)
-                logger.warning("[multi-memory] prefetch %s: %s", sub.name, exc)
+        results = self._fan_out("prefetch", query, session_id=session_id)
+        parts = [f"[{sub.name}] {r}" for sub, r in results if r]
         return "\n\n".join(parts)
 
     def queue_prefetch(self, query: str, *, session_id: str = "") -> None:
-        for sub in self._snapshot():
-            if self._health.is_open(sub.name):
-                continue
-            try:
-                sub.queue_prefetch(query, session_id=session_id)
-                self._health.record_success(sub.name)
-            except Exception as exc:
-                self._health.record_failure(sub.name)
-                logger.warning("[multi-memory] queue_prefetch %s: %s", sub.name, exc)
+        self._fan_out("queue_prefetch", query, session_id=session_id)
 
     def sync_turn(self, user_content: str, assistant_content: str, *, session_id: str = "", **kwargs: Any) -> None:
         messages = kwargs.get("messages")
-        for sub in self._snapshot():
-            if self._health.is_open(sub.name):
-                continue
-            try:
-                sub.sync_turn(user_content, assistant_content, session_id=session_id, messages=messages)
-                self._health.record_success(sub.name)
-            except Exception as exc:
-                self._health.record_failure(sub.name)
-                logger.warning("[multi-memory] sync_turn %s: %s", sub.name, exc)
+        self._fan_out("sync_turn", user_content, assistant_content,
+                       session_id=session_id, messages=messages)
 
     def on_turn_start(self, turn_number: int = 0, message: str = "", **kwargs: Any) -> None:
-        for sub in self._snapshot():
-            if self._health.is_open(sub.name):
-                continue
-            try:
-                sub.on_turn_start(turn_number, message, **kwargs)
-                self._health.record_success(sub.name)
-            except Exception as exc:
-                self._health.record_failure(sub.name)
-                logger.warning("[multi-memory] on_turn_start %s: %s", sub.name, exc)
+        self._fan_out("on_turn_start", turn_number, message, **kwargs)
 
     def on_session_end(self, messages: list[dict]) -> None:
-        for sub in self._snapshot():
-            if self._health.is_open(sub.name):
-                continue
-            try:
-                sub.on_session_end(messages)
-                self._health.record_success(sub.name)
-            except Exception as exc:
-                self._health.record_failure(sub.name)
-                logger.warning("[multi-memory] on_session_end %s: %s", sub.name, exc)
+        self._fan_out("on_session_end", messages)
 
     def on_session_switch(self, new_session_id: str = "", *, parent_session_id: str = "", reset: bool = False, **kwargs: Any) -> None:
         if not new_session_id:
             return
-        for sub in self._snapshot():
-            if self._health.is_open(sub.name):
-                continue
-            try:
-                sub.on_session_switch(new_session_id, parent_session_id=parent_session_id, reset=reset, **kwargs)
-                self._health.record_success(sub.name)
-            except Exception as exc:
-                self._health.record_failure(sub.name)
-                logger.warning("[multi-memory] on_session_switch %s: %s", sub.name, exc)
+        self._fan_out("on_session_switch", new_session_id,
+                       parent_session_id=parent_session_id, reset=reset, **kwargs)
 
     def on_memory_write(self, action: str, target: str, content: str, metadata: dict[str, Any] | None = None) -> None:
-        for sub in self._snapshot():
-            if self._health.is_open(sub.name):
-                continue
-            try:
-                sub.on_memory_write(action, target, content, metadata)
-                self._health.record_success(sub.name)
-            except Exception as exc:
-                self._health.record_failure(sub.name)
-                logger.warning("[multi-memory] on_memory_write %s: %s", sub.name, exc)
+        self._fan_out("on_memory_write", action, target, content, metadata)
 
     def on_delegation(self, task: str = "", result: str = "", *, child_session_id: str = "", **kwargs: Any) -> None:
-        for sub in self._snapshot():
-            if self._health.is_open(sub.name):
-                continue
-            try:
-                sub.on_delegation(task, result, child_session_id=child_session_id, **kwargs)
-                self._health.record_success(sub.name)
-            except Exception as exc:
-                self._health.record_failure(sub.name)
-                logger.warning("[multi-memory] on_delegation %s: %s", sub.name, exc)
+        self._fan_out("on_delegation", task, result,
+                       child_session_id=child_session_id, **kwargs)
 
     def on_pre_compress(self, messages: list[dict[str, Any]]) -> str:
-        parts = []
-        for sub in self._snapshot():
-            if self._health.is_open(sub.name):
-                continue
-            try:
-                r = sub.on_pre_compress(messages)
-                if r:
-                    parts.append(f"[{sub.name}] {r}")
-                self._health.record_success(sub.name)
-            except Exception as exc:
-                self._health.record_failure(sub.name)
-                logger.warning("[multi-memory] on_pre_compress %s: %s", sub.name, exc)
+        results = self._fan_out("on_pre_compress", messages)
+        parts = [f"[{sub.name}] {r}" for sub, r in results if r]
         return "\n\n".join(parts) if parts else ""
 
 
@@ -536,7 +497,7 @@ def _try_generic_backend(name: str, backends: list[_SubProviderAdapter]) -> None
     ``_GenericAdapter``.
     """
     try:
-        from plugins.memory import load_memory_provider
+        from plugins.memory import load_memory_provider  # noqa: PLC0415
         provider = load_memory_provider(name)
         if provider is None:
             logger.warning(

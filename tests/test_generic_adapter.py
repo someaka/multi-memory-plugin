@@ -1,5 +1,5 @@
 """Tests for _GenericAdapter and custom backend discovery."""
-
+# ruff: noqa: PLC0415  # intentional imports-inside-functions in tests
 from __future__ import annotations
 
 import sys

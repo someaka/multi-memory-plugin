@@ -1,4 +1,5 @@
 """Tests for multi_memory.health — HealthTracker with half-open recovery + timeout_wrapper."""
+# ruff: noqa: PLC0415  # intentional imports-inside-functions in tests
 from __future__ import annotations
 
 import logging

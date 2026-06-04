@@ -46,14 +46,16 @@ def _renorm_schemas(raw: list[dict], prefix: str) -> list[dict]:
     """Strip existing prefix, re-add — guarantees exactly one prefix.
 
     Handles backends that self-prefix (``holographic_store``) and
-    backends that don't (``fact_store``) uniformly.
+    backends that don't (``fact_store``) uniformly.  Single-pass O(n).
     """
     pfx = f"{prefix}_"
-    stripped = [
-        {**s, "name": s["name"][len(pfx):] if s["name"].startswith(pfx) else s["name"]}
-        for s in raw
-    ]
-    return [{**s, "name": f"{prefix}_{s['name']}"} for s in stripped]
+    result = []
+    for s in raw:
+        name = s["name"]
+        if name.startswith(pfx):
+            name = name[len(pfx):]
+        result.append({**s, "name": f"{prefix}_{name}"})
+    return result
 
 
 class _SubProviderAdapter:
@@ -94,8 +96,9 @@ class _SubProviderAdapter:
         return _renorm_schemas(raw, self.PREFIX)
 
     def handle_tool_call(self, tool_name: str, args: dict, **kwargs: Any) -> str:
-        inner = tool_name[len(self.PREFIX) + 1:]
-        return self._delegate.handle_tool_call(inner, args, **kwargs)
+        # Pass full prefixed name through — every concrete adapter does this.
+        # Backends that need prefix stripping (none currently) can override.
+        return self._delegate.handle_tool_call(tool_name, args, **kwargs)
 
     def prefetch(self, query: str, *, session_id: str = "") -> str:
         return self._delegate.prefetch(query, session_id=session_id)
@@ -237,7 +240,7 @@ class _MnemosyneAdapter(_SubProviderAdapter):
         # Mnemosyne is a user-installed plugin (~/.hermes/plugins/mnemosyne/),
         # not a pip package — use the Hermes plugin loader to find it.
         try:
-            from plugins.memory import load_memory_provider
+            from plugins.memory import load_memory_provider  # noqa: PLC0415
             provider = load_memory_provider("mnemosyne")
             if provider is None:
                 raise ImportError(
@@ -256,11 +259,6 @@ class _MnemosyneAdapter(_SubProviderAdapter):
         # different name than the canonical "mnemosyne" used by config.
         return "mnemosyne"
 
-    def handle_tool_call(self, tool_name: str, args: dict, **kwargs: Any) -> str:
-        # Mnemosyne uses FULL prefixed tool names internally
-        # (e.g. "mnemosyne_recall", not "recall") — don't strip.
-        return self._delegate.handle_tool_call(tool_name, args, **kwargs)
-
     def get_tool_schemas(self) -> list[dict]:
         # Mnemosyne's tools are ALREADY prefixed ("mnemosyne_recall"),
         # don't double-prefix like the base class does.
@@ -273,28 +271,12 @@ class _Mem0Adapter(_SubProviderAdapter):
     CLASS      = "Mem0MemoryProvider"
     PREFIX     = "mem0"
 
-    def get_tool_schemas(self) -> list[dict]:
-        raw = self._delegate.get_tool_schemas()
-        return _renorm_schemas(raw, self.PREFIX)
-
-    def handle_tool_call(self, tool_name: str, args: dict, **kwargs: Any) -> str:
-        # Mem0 expects full prefixed names ("mem0_search") — don't strip.
-        return self._delegate.handle_tool_call(tool_name, args, **kwargs)
-
 
 class _HolographicAdapter(_SubProviderAdapter):
     CONFIG_KEY = "holographic"
     MODULE     = "plugins.memory.holographic"
     CLASS      = "HolographicMemoryProvider"
     PREFIX     = "holographic"
-
-    def get_tool_schemas(self) -> list[dict]:
-        raw = self._delegate.get_tool_schemas()
-        return _renorm_schemas(raw, self.PREFIX)
-
-    def handle_tool_call(self, tool_name: str, args: dict, **kwargs: Any) -> str:
-        # Holographic expects full prefixed names — don't strip.
-        return self._delegate.handle_tool_call(tool_name, args, **kwargs)
 
 
 class _HonchoAdapter(_SubProviderAdapter):
@@ -303,14 +285,6 @@ class _HonchoAdapter(_SubProviderAdapter):
     CLASS      = "HonchoMemoryProvider"
     PREFIX     = "honcho"
 
-    def get_tool_schemas(self) -> list[dict]:
-        raw = self._delegate.get_tool_schemas()
-        return _renorm_schemas(raw, self.PREFIX)
-
-    def handle_tool_call(self, tool_name: str, args: dict, **kwargs: Any) -> str:
-        # Honcho expects full prefixed names ("honcho_search") — don't strip.
-        return self._delegate.handle_tool_call(tool_name, args, **kwargs)
-
 
 class _OpenVikingAdapter(_SubProviderAdapter):
     CONFIG_KEY = "openviking"
@@ -318,28 +292,12 @@ class _OpenVikingAdapter(_SubProviderAdapter):
     CLASS      = "OpenVikingMemoryProvider"
     PREFIX     = "viking"  # tool prefix differs from config key
 
-    def get_tool_schemas(self) -> list[dict]:
-        raw = self._delegate.get_tool_schemas()
-        return _renorm_schemas(raw, self.PREFIX)
-
-    def handle_tool_call(self, tool_name: str, args: dict, **kwargs: Any) -> str:
-        # OpenViking expects full prefixed names ("viking_search") — don't strip.
-        return self._delegate.handle_tool_call(tool_name, args, **kwargs)
-
 
 class _HindsightAdapter(_SubProviderAdapter):
     CONFIG_KEY = "hindsight"
     MODULE     = "plugins.memory.hindsight"
     CLASS      = "HindsightMemoryProvider"
     PREFIX     = "hindsight"
-
-    def get_tool_schemas(self) -> list[dict]:
-        raw = self._delegate.get_tool_schemas()
-        return _renorm_schemas(raw, self.PREFIX)
-
-    def handle_tool_call(self, tool_name: str, args: dict, **kwargs: Any) -> str:
-        # Hindsight expects full prefixed names ("hindsight_retain") — don't strip.
-        return self._delegate.handle_tool_call(tool_name, args, **kwargs)
 
 
 class _RetainDBAdapter(_SubProviderAdapter):
@@ -354,16 +312,7 @@ class _RetainDBAdapter(_SubProviderAdapter):
         if callable(close_fn):
             close_fn()
         else:
-            # Fallback: just shutdown if close() not available
             self._delegate.shutdown()
-
-    def get_tool_schemas(self) -> list[dict]:
-        raw = self._delegate.get_tool_schemas()
-        return _renorm_schemas(raw, self.PREFIX)
-
-    def handle_tool_call(self, tool_name: str, args: dict, **kwargs: Any) -> str:
-        # RetainDB expects full prefixed names ("retaindb_profile") — don't strip.
-        return self._delegate.handle_tool_call(tool_name, args, **kwargs)
 
 
 class _ByteRoverAdapter(_SubProviderAdapter):
@@ -372,25 +321,9 @@ class _ByteRoverAdapter(_SubProviderAdapter):
     CLASS      = "ByteRoverMemoryProvider"
     PREFIX     = "brv"  # tool prefix differs from config key
 
-    def get_tool_schemas(self) -> list[dict]:
-        raw = self._delegate.get_tool_schemas()
-        return _renorm_schemas(raw, self.PREFIX)
-
-    def handle_tool_call(self, tool_name: str, args: dict, **kwargs: Any) -> str:
-        # ByteRover expects full prefixed names ("brv_query") — don't strip.
-        return self._delegate.handle_tool_call(tool_name, args, **kwargs)
-
 
 class _SupermemoryAdapter(_SubProviderAdapter):
     CONFIG_KEY = "supermemory"
     MODULE     = "plugins.memory.supermemory"
     CLASS      = "SupermemoryMemoryProvider"
     PREFIX     = "supermemory"
-
-    def get_tool_schemas(self) -> list[dict]:
-        raw = self._delegate.get_tool_schemas()
-        return _renorm_schemas(raw, self.PREFIX)
-
-    def handle_tool_call(self, tool_name: str, args: dict, **kwargs: Any) -> str:
-        # Supermemory expects full prefixed names ("supermemory_store") — don't strip.
-        return self._delegate.handle_tool_call(tool_name, args, **kwargs)

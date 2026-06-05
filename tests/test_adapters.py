@@ -1168,7 +1168,7 @@ class TestNoDoublePrefix:
         delegate.handle_tool_call.assert_called_once_with("honcho_search", {"query": "test"})
 
     def test_holographic_strips_prefix_normally(self):
-        """Holographic adapter strips then re-adds prefix for exact one-prefix guarantee."""
+        """Holographic adapter strips prefix before dispatching (doesn't self-prefix)."""
         mock_delegate = mock.MagicMock()
         mock_delegate.name = "holographic"
         mock_delegate.get_tool_schemas.return_value = [
@@ -1182,11 +1182,9 @@ class TestNoDoublePrefix:
         schemas = adapter.get_tool_schemas()
         names = [s["name"] for s in schemas]
         assert names == ["holographic_store", "holographic_feedback"]
-        # handle_tool_call passes full prefixed name (plugin accepts both forms)
+        # handle_tool_call strips prefix — holographic expects "store", not "holographic_store"
         adapter.handle_tool_call("holographic_store", {"action": "list"})
-        mock_delegate.handle_tool_call.assert_called_once_with(
-            "holographic_store", {"action": "list"}
-        )
+        mock_delegate.handle_tool_call.assert_called_once_with("store", {"action": "list"})
 
     def test_holographic_no_double_prefix_when_already_prefixed(self):
         """If holographic plugin returns already-prefixed names ('holographic_store'),

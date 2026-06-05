@@ -101,8 +101,9 @@ class _SubProviderAdapter:
         return _renorm_schemas(raw, self.PREFIX)
 
     def handle_tool_call(self, tool_name: str, args: dict, **kwargs: Any) -> str:
-        # Pass full prefixed name through — every concrete adapter does this.
-        # Backends that need prefix stripping (none currently) can override.
+        # Pass full name through — most backends self-prefix their tools
+        # (mnemosyne_recall, mem0_search, etc.). Backends that don't
+        # self-prefix (holographic) override this method.
         return self._delegate.handle_tool_call(tool_name, args, **kwargs)
 
     def prefetch(self, query: str, *, session_id: str = "") -> str:
@@ -324,6 +325,14 @@ class _HolographicAdapter(_SubProviderAdapter):
     MODULE = "plugins.memory.holographic"
     CLASS = "HolographicMemoryProvider"
     PREFIX = "holographic"
+
+    def handle_tool_call(self, tool_name: str, args: dict, **kwargs: Any) -> str:
+        # Holographic doesn't self-prefix (tools are "fact_store", not
+        # "holographic_fact_store"). Strip our prefix before dispatching.
+        pfx = f"{self.PREFIX}_"
+        if tool_name.startswith(pfx):
+            tool_name = tool_name[len(pfx) :]
+        return self._delegate.handle_tool_call(tool_name, args, **kwargs)
 
 
 class _HonchoAdapter(_SubProviderAdapter):

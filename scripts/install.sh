@@ -38,7 +38,7 @@ done
 
 # ── main ─────────────────────────────────────────────────────
 echo ""
-info "multi-memory plugin installer v0.7.0"
+info "multi-memory plugin installer v0.7.1"
 echo ""
 
 # 1. Verify source exists
@@ -67,23 +67,14 @@ else
     ok "Memory symlink created: $PLUGIN_DST → $PLUGIN_SRC"
 fi
 
-# 3b. Create symlink for general plugin scanner (CLI commands, dashboard)
+# 3b. Remove stale general-plugin symlink if present (pre-v0.7.1 left one).
+#     Memory providers are discovered via plugins/memory/<name>/ and their own
+#     cli.py — the general plugin scanner is not involved and the symlink
+#     caused a false "exclusive" kind classification in the dashboard.
 PLUGIN_GENERAL_DST="$HERMES_HOME/plugins/$PLUGIN_NAME"
-mkdir -p "$HERMES_HOME/plugins"
 if [[ -L "$PLUGIN_GENERAL_DST" ]]; then
-    EXISTING="$(readlink "$PLUGIN_GENERAL_DST")"
-    if [[ "$EXISTING" == "$PLUGIN_SRC" ]]; then
-        ok "General plugin symlink already points to source (idempotent)"
-    else
-        warn "General plugin symlink points elsewhere ($EXISTING) — updating"
-        ln -sfn "$PLUGIN_SRC" "$PLUGIN_GENERAL_DST"
-        ok "General plugin symlink updated"
-    fi
-elif [[ -d "$PLUGIN_GENERAL_DST" ]]; then
-    warn "Directory exists at $PLUGIN_GENERAL_DST — not a symlink; leaving it"
-else
-    ln -s "$PLUGIN_SRC" "$PLUGIN_GENERAL_DST"
-    ok "General plugin symlink created: $PLUGIN_GENERAL_DST → $PLUGIN_SRC"
+    rm -f "$PLUGIN_GENERAL_DST"
+    ok "Removed stale general-plugin symlink (no longer needed)"
 fi
 
 # 4. Validate Python import
@@ -107,16 +98,9 @@ else
     warn "No config.yaml at $CONFIG_DST — plugin loads at runtime but will use defaults"
 fi
 
-# 7. Auto-enable plugin (so it appears in hermes plugins list / dashboard)
-if command -v hermes &>/dev/null; then
-    if hermes plugins enable multi 2>/dev/null; then
-        ok "Plugin enabled"
-    else
-        warn "Could not auto-enable plugin — run 'hermes plugins enable multi' manually"
-    fi
-else
-    warn "hermes CLI not found — run 'hermes plugins enable multi' manually"
-fi
+# 7. Memory providers don't use the general plugin enable/disable system.
+#    They're discovered via plugins/memory/<name>/ and activated by setting
+#    memory.provider in config.yaml. Skip hermes plugins enable entirely.
 
 # 8. Auto-configure memory.provider if not already set to 'multi'
 if [[ -f "$CONFIG_DST" ]]; then

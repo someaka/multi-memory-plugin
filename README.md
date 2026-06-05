@@ -10,17 +10,26 @@ A [Hermes](https://github.com/NousResearch/hermes-agent) memory provider that ru
 
 ## Install
 
+**Recommended** (auto-configures everything):
+
+```bash
+git clone https://github.com/someaka/multi-memory-plugin
+cd multi-memory-plugin
+./scripts/install.sh
+```
+
+The installer creates the required symlinks, enables the plugin, and sets
+`memory.provider: multi` automatically.
+
+**Alternative** (manual):
+
 ```bash
 hermes plugins install someaka/multi-memory-plugin
+hermes plugins enable multi
+hermes config set memory.provider multi
 ```
 
-Then activate it:
-
-```bash
-hermes memory setup
-```
-
-Or edit `~/.hermes/config.yaml` directly — see **[CONFIG.md](CONFIG.md)**.
+See **[CONFIG.md](CONFIG.md)** for backend configuration.
 
 ---
 

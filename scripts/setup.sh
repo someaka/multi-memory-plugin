@@ -80,7 +80,7 @@ detect_backend() {
 # ── main ─────────────────────────────────────────────────────
 echo ""
 echo "╔══════════════════════════════════════════════╗"
-echo "║   multi-memory plugin — setup wizard v0.3.0  ║"
+echo "║   multi-memory plugin — setup wizard v0.7.0  ║"
 echo "╚══════════════════════════════════════════════╝"
 echo ""
 info "Python: $("$PYTHON" --version 2>&1)"

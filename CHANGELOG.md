@@ -5,6 +5,51 @@ All notable changes to the multi-memory plugin will be documented in this file.
 The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] — 2026-06-05
+
+### Fixed
+- **Plugin invisible in `hermes plugins list` and dashboard** — install script
+  now creates a second symlink at `~/.hermes/plugins/multi/` for the general
+  plugin scanner (CLI commands, dashboard visibility). Previously only created
+  a symlink in the memory discovery path which the general scanner skips.
+- **Auto-detection marked plugin as `kind=exclusive`** — added explicit
+  `kind: standalone` to `plugin.yaml` so the general plugin scanner doesn't
+  auto-detect the plugin as a memory provider and skip it entirely.
+- **`hermes multi add <backend>` set wrong provider** — was setting
+  `memory.provider` to the backend name (e.g. `mnemosyne`) instead of `multi`.
+- **`_cmd_remove` left broken config** — removing the last backend now resets
+  `memory.provider` back to `default` instead of leaving it as `multi` with
+  zero backends.
+- **`register()` crashed on older Hermes** — wrapped CLI registration in
+  `hasattr(ctx, 'register_cli_command')` guard for graceful degradation.
+- **`get_tool_schemas()` held lock during delegate calls** — now takes a
+  snapshot first (consistent with `_fan_out()`) to avoid contention in
+  gateway mode.
+- **Install script used `python` instead of `$PYTHON`** — test runner step
+  now uses the detected Python binary.
+- **Install script `yaml.dump` destroyed config comments** — replaced with
+  `hermes config set` which preserves YAML structure.
+- **Version mismatch** — aligned plugin.yaml (was 0.6.0), pyproject.toml
+  (was 0.4.0), and scripts (were 0.3.0) to 0.7.0.
+- **Install script display bug** — `MultiMemoryProvider.name` property was
+  printed on the uninstantiated class, showing `<property object at 0x...>`.
+- **Missing `PYTHON` variable in install script** — auto-config steps failed
+  with `unbound variable`.
+
+### Added
+- **CLI registration via general plugin system** — `register()` now calls
+  `ctx.register_cli_command()` so `hermes multi` commands appear in
+  `hermes plugins list` and the dashboard even before `memory.provider: multi`
+  is configured.
+- **Backend name validation** — `hermes multi add` now validates the backend
+  name against known backends and suggests valid alternatives.
+- **`_cmd_status` shows installation status** — displays whether each active
+  backend is installed, missing, or unknown.
+- **Install script auto-configuration** — `install.sh` now automatically
+  enables the plugin in `plugins.enabled` and sets `memory.provider: multi`.
+- **Dual-symlink install architecture** — documented and implemented the
+  two-symlink pattern for memory discovery + general plugin scanner.
+
 ## [0.6.0] — 2026-05-31
 
 ### Added

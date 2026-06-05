@@ -129,11 +129,21 @@ def _cmd_status(args: argparse.Namespace) -> None:
 
     json_out = getattr(args, "json_output", False)
 
+    # Check installation status for each backend
+    backend_info = {}
+    try:
+        from multi_memory.discovery import discover_backends  # noqa: PLC0415
+        for b in discover_backends():
+            backend_info[b["config_key"]] = b.get("installed", False)
+    except Exception:
+        pass
+
     if json_out:
         print(json.dumps({
             "provider": "multi",
             "active_backends": active,
             "config_format": "backends" if backends_dict else "providers",
+            "installed": {k: v for k, v in backend_info.items() if k in active},
         }, indent=2))
         return
 
@@ -145,8 +155,23 @@ def _cmd_status(args: argparse.Namespace) -> None:
         print("  No backends configured. Use 'hermes multi add <name>' to add one.\n")
         return
 
+    # Header
+    print(f"    {'Backend':15s} {'Installed':12s} {'Description'}")
+    print(f"    {'─' * 15} {'─' * 12} {'─' * 40}")
+
     for name in active:
-        print(f"    ○ {name}")
+        installed = backend_info.get(name, None)
+        if installed is True:
+            status = "✓ installed"
+            marker = "→"
+        elif installed is False:
+            status = "✗ missing"
+            marker = "!"
+        else:
+            status = "? unknown"
+            marker = " "
+        desc = ALL_BACKENDS.get(name, "")
+        print(f"  {marker} {name:15s} {status:12s} {desc}")
 
     print()
 
@@ -191,6 +216,13 @@ def _cmd_add(args: argparse.Namespace) -> None:
         print("\n  Usage: hermes multi add <backend>\n")
         return
 
+    # Validate backend name against known backends
+    if backend not in ALL_BACKENDS:
+        known = ", ".join(sorted(ALL_BACKENDS.keys()))
+        print(f"\n  Unknown backend '{backend}'.")
+        print(f"  Known backends: {known}\n")
+        return
+
     config = load_config()
     memory_cfg = config.setdefault("memory", {})
 
@@ -212,9 +244,9 @@ def _cmd_add(args: argparse.Namespace) -> None:
     if backend not in providers_list:
         providers_list.append(backend)
 
-    # Also set legacy single-provider for backwards compat
-    if not memory_cfg.get("provider"):
-        memory_cfg["provider"] = backend
+    # Also set provider to 'multi' for backwards compat
+    if not memory_cfg.get("provider") or memory_cfg["provider"] != "multi":
+        memory_cfg["provider"] = "multi"
 
     save_config(config)
     print(f"\n  ✓ Added '{backend}' to active backends.")
@@ -263,4 +295,11 @@ def _cmd_remove(args: argparse.Namespace) -> None:
     if remaining:
         print(f"\n  ✓ Removed '{backend}'. Active: {', '.join(remaining)}\n")
     else:
-        print(f"\n  ✓ Removed '{backend}'. No backends active — built-in only.\n")
+        # Last backend removed — provider: multi with zero backends is broken
+        if memory_cfg.get("provider") == "multi":
+            memory_cfg["provider"] = "default"
+            save_config(config)
+            print(f"\n  ✓ Removed '{backend}'. No backends active.")
+            print("  Switched memory.provider back to 'default' (built-in only).\n")
+        else:
+            print(f"\n  ✓ Removed '{backend}'. No backends active — built-in only.\n")

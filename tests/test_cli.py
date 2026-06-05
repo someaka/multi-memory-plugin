@@ -191,6 +191,34 @@ class TestCmdAdd:
         out = capsys.readouterr().out
         assert "Usage:" in out
 
+    def test_add_sets_provider_to_multi(self, capsys):
+        """add sets memory.provider to 'multi', not to the backend name."""
+        config = {"memory": {}}
+        saved = {}
+        args = argparse.Namespace(backend="holographic")
+        with mock.patch("multi_memory.cli.load_config", return_value=config), \
+             mock.patch("multi_memory.cli.save_config", side_effect=saved.update):
+            _cmd_add(args)
+        assert saved["memory"]["provider"] == "multi"
+
+    def test_add_overrides_wrong_provider(self, capsys):
+        """add fixes memory.provider even if it was set to something else."""
+        config = {"memory": {"provider": "mnemosyne"}}
+        saved = {}
+        args = argparse.Namespace(backend="holographic")
+        with mock.patch("multi_memory.cli.load_config", return_value=config), \
+             mock.patch("multi_memory.cli.save_config", side_effect=saved.update):
+            _cmd_add(args)
+        assert saved["memory"]["provider"] == "multi"
+
+    def test_add_unknown_backend_rejected(self, capsys):
+        """add rejects unknown backend names."""
+        args = argparse.Namespace(backend="garbage")
+        _cmd_add(args)
+        out = capsys.readouterr().out
+        assert "Unknown backend" in out
+        assert "garbage" in out
+
 
 # ── remove ────────────────────────────────────────────────────────────────
 
@@ -223,18 +251,25 @@ class TestCmdRemove:
         assert "Usage:" in out
 
     def test_remove_last_backend(self, capsys):
-        """remove last backend shows built-in only message."""
+        """remove last backend resets provider to default."""
         config = {
             "memory": {
                 "multi": {"backends": {"mem0": {}}},
                 "providers": ["mem0"],
-                "provider": "mem0",
+                "provider": "multi",
             }
         }
         saved = {}
         args = argparse.Namespace(backend="mem0")
+        call_count = [0]
+        def capture_save(cfg):
+            call_count[0] += 1
+            saved.update(cfg)
         with mock.patch("multi_memory.cli.load_config", return_value=config), \
-             mock.patch("multi_memory.cli.save_config", side_effect=saved.update):
+             mock.patch("multi_memory.cli.save_config", side_effect=capture_save):
             _cmd_remove(args)
         out = capsys.readouterr().out
-        assert "built-in only" in out
+        assert "Removed" in out
+        assert "default" in out
+        # Provider should have been reset to 'default'
+        assert saved["memory"]["provider"] == "default"

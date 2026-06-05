@@ -288,4 +288,9 @@ or `null` disables it.
 
 8. **Install via `hermes plugins install`** —
    `hermes plugins install someaka/multi-memory-plugin`. Not a symlink.
-   For development, symlink: `ln -sf $(pwd)/src/multi_memory ~/.hermes/hermes-agent/plugins/memory/multi/`
+   For development, two symlinks are required:
+   ```bash
+   ln -sf $(pwd)/src/multi_memory ~/.hermes/hermes-agent/plugins/memory/multi/
+   ln -sf $(pwd)/src/multi_memory ~/.hermes/plugins/multi/
+   ```
+   Or use `./scripts/install.sh` which creates both symlinks + auto-configures.

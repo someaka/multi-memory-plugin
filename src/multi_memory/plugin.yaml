@@ -1,8 +1,9 @@
 name: multi
-version: 0.6.0
+version: 0.7.0
 description: |
   Run multiple memory providers (Mnemosyne, Mem0, Holographic, Honcho,
   OpenViking, Hindsight, RetainDB, ByteRover, Supermemory)
   simultaneously via a single MemoryProvider instance. Configured via
   memory.multi.backends in config.yaml.
+kind: standalone
 pip_dependencies: []

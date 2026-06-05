@@ -116,8 +116,29 @@ def _is_disabled(value: Any) -> bool:
 
 
 def register(ctx) -> None:
-    """Entry point — called by Hermes plugin loader via _ProviderCollector."""
+    """Entry point — called by Hermes plugin loader.
+
+    Registers the MultiMemoryProvider with the memory system **and**
+    the ``hermes multi`` CLI commands with the general plugin system.
+    The CLI registration here ensures the commands appear in
+    ``hermes plugins list`` and the dashboard even before
+    ``memory.provider: multi`` is configured.
+
+    Gracefully degrades on older Hermes versions that lack
+    ``register_cli_command`` on the PluginContext.
+    """
     ctx.register_memory_provider(MultiMemoryProvider())
+
+    if hasattr(ctx, "register_cli_command"):
+        from .cli import register_cli, multi_command  # noqa: PLC0415
+
+        ctx.register_cli_command(
+            name="multi",
+            help="Manage multi-memory backends (status, list, add, remove)",
+            setup_fn=register_cli,
+            handler_fn=multi_command,
+            description="Multi-memory backend management CLI",
+        )
 
 
 class MultiMemoryProvider(MemoryProvider):
@@ -260,26 +281,35 @@ class MultiMemoryProvider(MemoryProvider):
         self._fan_out("initialize", session_id=session_id, **kwargs)
 
     def get_tool_schemas(self) -> list[dict]:
-        """Merge schemas: first-seen wins by tool name."""
-        with self._lock:
-            schemas, seen = [], set()
-            for sub in self._subs:
-                try:
-                    sub_schemas = sub.get_tool_schemas()
-                except Exception as exc:
-                    logger.warning(
-                        "[multi-memory] %s get_tool_schemas() failed: %s — skipping",
-                        sub.name, exc,
-                    )
-                    self._health.record_failure(sub.name)
-                    continue
-                for raw in sub_schemas:
-                    name = raw.get("name", "")
-                    if name and name not in seen:
-                        schemas.append(raw)
-                        seen.add(name)
-            self._tool_budget.check(schemas)
-            return schemas
+        """Merge schemas: first-seen wins by tool name.
+
+        Takes a snapshot of active subs under the lock, then calls
+        delegates without holding it — consistent with _fan_out() and
+        safe for gateway mode where concurrent requests may call
+        get_tool_schemas() while another thread modifies the sub list.
+        """
+        subs = self._snapshot()
+        schemas, seen = [], set()
+        for sub in subs:
+            if self._health.is_open(sub.name):
+                continue
+            try:
+                sub_schemas = sub.get_tool_schemas()
+                self._health.record_success(sub.name)
+            except Exception as exc:
+                logger.warning(
+                    "[multi-memory] %s get_tool_schemas() failed: %s — skipping",
+                    sub.name, exc,
+                )
+                self._health.record_failure(sub.name)
+                continue
+            for raw in sub_schemas:
+                name = raw.get("name", "")
+                if name and name not in seen:
+                    schemas.append(raw)
+                    seen.add(name)
+        self._tool_budget.check(schemas)
+        return schemas
 
     def handle_tool_call(self, tool_name: str, args: dict, **kwargs: Any) -> str:
         subs = self._snapshot()

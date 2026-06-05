@@ -1012,6 +1012,36 @@ class TestRegisterFunction:
         args = ctx.register_memory_provider.call_args[0]
         assert isinstance(args[0], MultiMemoryProvider)
 
+    def test_register_cli_command(self):
+        """register() also registers CLI commands when ctx supports it."""
+        from multi_memory import register
+
+        ctx = mock.MagicMock()
+        with (
+            mock.patch("multi_memory.MultiMemoryProvider._load_config"),
+            mock.patch("multi_memory.MultiMemoryProvider._validate_namespaces"),
+        ):
+            register(ctx)
+        ctx.register_cli_command.assert_called_once()
+        kwargs = ctx.register_cli_command.call_args[1]
+        assert kwargs["name"] == "multi"
+        assert kwargs["help"] == "Manage multi-memory backends (status, list, add, remove)"
+        assert callable(kwargs["setup_fn"])
+        assert callable(kwargs["handler_fn"])
+
+    def test_register_graceful_without_cli_command(self):
+        """register() still works on old Hermes lacking register_cli_command."""
+        from multi_memory import register
+
+        ctx = mock.MagicMock(spec=["register_memory_provider"])
+        with (
+            mock.patch("multi_memory.MultiMemoryProvider._load_config"),
+            mock.patch("multi_memory.MultiMemoryProvider._validate_namespaces"),
+        ):
+            register(ctx)
+        ctx.register_memory_provider.assert_called_once()
+        # Should not raise — hasattr guard skips CLI registration
+
 
 # ── _load_config edge cases ─────────────────────────────────────────────────
 

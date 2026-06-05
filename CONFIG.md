@@ -2,11 +2,27 @@
 
 ## Install
 
+**Recommended** (auto-configures everything):
+
 ```bash
-hermes plugins install someaka/multi-memory-plugin
+git clone https://github.com/someaka/multi-memory-plugin
+cd multi-memory-plugin
+./scripts/install.sh
 ```
 
-Then activate via `hermes memory setup` or edit config directly.
+The installer creates two symlinks (for memory discovery + general plugin
+scanner), enables the plugin in `plugins.enabled`, and sets
+`memory.provider: multi` automatically.
+
+**Alternative** (manual):
+
+```bash
+hermes plugins install someaka/multi-memory-plugin
+hermes plugins enable multi
+hermes config set memory.provider multi
+```
+
+Then add backends — see formats below.
 
 ---
 
@@ -210,8 +226,12 @@ A backend is treated as disabled if its value is one of:
 ## Development
 
 ```bash
-# Symlink for live editing
+# Symlink for live editing (two symlinks required)
 ln -sf "$(pwd)/src/multi_memory" ~/.hermes/hermes-agent/plugins/memory/multi/
+ln -sf "$(pwd)/src/multi_memory" ~/.hermes/plugins/multi/
+
+# Or use install.sh (creates both symlinks + auto-configures)
+./scripts/install.sh
 
 # Test
 pip install -e ".[all,test]"

@@ -313,11 +313,10 @@ def _cmd_remove(args: argparse.Namespace) -> None:
     remaining = _get_active_backends(memory_cfg)
     if remaining:
         print(f"\n  ✓ Removed '{backend}'. Active: {', '.join(remaining)}\n")
-    # Last backend removed — provider: multi with zero backends is broken
-    elif memory_cfg.get("provider") == "multi":
-        memory_cfg["provider"] = "default"
-        save_config(config)
-        print(f"\n  ✓ Removed '{backend}'. No backends active.")
-        print("  Switched memory.provider back to 'default' (built-in only).\n")
     else:
-        print(f"\n  ✓ Removed '{backend}'. No backends active — built-in only.\n")
+        # Keep provider=multi even with zero backends — an empty
+        # multiplexer is valid (no-op), and switching to 'default'
+        # makes `hermes multi add` disappear (CLI registers only for
+        # the active provider).
+        print(f"\n  ✓ Removed '{backend}'. No backends active.")
+        print("  Use 'hermes multi add <name>' to add one.\n")

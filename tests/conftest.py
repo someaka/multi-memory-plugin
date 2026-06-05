@@ -1,4 +1,5 @@
 """Self-contained test configuration — tests work without PYTHONPATH."""
+
 from __future__ import annotations
 
 import os

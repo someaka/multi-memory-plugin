@@ -31,6 +31,7 @@ def parser():
 
 # ── register_cli ──────────────────────────────────────────────────────────
 
+
 class TestRegisterCLI:
     def test_registers_subcommands(self, parser):
         """register_cli adds status/list/add/remove subcommands."""
@@ -59,6 +60,7 @@ class TestRegisterCLI:
 
 # ── multi_command dispatch ────────────────────────────────────────────────
 
+
 class TestMultiCommandDispatch:
     def test_no_subcommand_prints_help(self, capsys):
         args = argparse.Namespace(multi_command=None)
@@ -74,6 +76,7 @@ class TestMultiCommandDispatch:
 
 
 # ── status ────────────────────────────────────────────────────────────────
+
 
 class TestCmdStatus:
     def test_status_with_backends(self, capsys):
@@ -125,6 +128,7 @@ class TestCmdStatus:
 
 # ── list ──────────────────────────────────────────────────────────────────
 
+
 class TestCmdList:
     def test_list_shows_all_backends(self, capsys):
         """list shows all 9 known backends."""
@@ -133,9 +137,17 @@ class TestCmdList:
         with mock.patch("multi_memory.cli.load_config", return_value=config):
             _cmd_list(args)
         out = capsys.readouterr().out
-        for name in ["mnemosyne", "holographic", "mem0", "honcho",
-                      "openviking", "hindsight", "retaindb", "byterover",
-                      "supermemory"]:
+        for name in [
+            "mnemosyne",
+            "holographic",
+            "mem0",
+            "honcho",
+            "openviking",
+            "hindsight",
+            "retaindb",
+            "byterover",
+            "supermemory",
+        ]:
             assert name in out
 
     def test_list_marks_active(self, capsys):
@@ -164,14 +176,17 @@ class TestCmdList:
 
 # ── add ───────────────────────────────────────────────────────────────────
 
+
 class TestCmdAdd:
     def test_add_new_backend(self, capsys):
         """add writes backend to both backends dict and providers list."""
         config = {"memory": {}}
         saved = {}
         args = argparse.Namespace(backend="mem0")
-        with mock.patch("multi_memory.cli.load_config", return_value=config), \
-             mock.patch("multi_memory.cli.save_config", side_effect=saved.update):
+        with (
+            mock.patch("multi_memory.cli.load_config", return_value=config),
+            mock.patch("multi_memory.cli.save_config", side_effect=saved.update),
+        ):
             _cmd_add(args)
         assert "memory" in saved
 
@@ -196,8 +211,10 @@ class TestCmdAdd:
         config = {"memory": {}}
         saved = {}
         args = argparse.Namespace(backend="holographic")
-        with mock.patch("multi_memory.cli.load_config", return_value=config), \
-             mock.patch("multi_memory.cli.save_config", side_effect=saved.update):
+        with (
+            mock.patch("multi_memory.cli.load_config", return_value=config),
+            mock.patch("multi_memory.cli.save_config", side_effect=saved.update),
+        ):
             _cmd_add(args)
         assert saved["memory"]["provider"] == "multi"
 
@@ -206,8 +223,10 @@ class TestCmdAdd:
         config = {"memory": {"provider": "mnemosyne"}}
         saved = {}
         args = argparse.Namespace(backend="holographic")
-        with mock.patch("multi_memory.cli.load_config", return_value=config), \
-             mock.patch("multi_memory.cli.save_config", side_effect=saved.update):
+        with (
+            mock.patch("multi_memory.cli.load_config", return_value=config),
+            mock.patch("multi_memory.cli.save_config", side_effect=saved.update),
+        ):
             _cmd_add(args)
         assert saved["memory"]["provider"] == "multi"
 
@@ -222,14 +241,17 @@ class TestCmdAdd:
 
 # ── remove ────────────────────────────────────────────────────────────────
 
+
 class TestCmdRemove:
     def test_remove_existing(self, capsys):
         """remove deletes backend from config."""
         config = {"memory": {"multi": {"backends": {"mem0": {}}}, "providers": ["mem0"]}}
         saved = {}
         args = argparse.Namespace(backend="mem0")
-        with mock.patch("multi_memory.cli.load_config", return_value=config), \
-             mock.patch("multi_memory.cli.save_config", side_effect=saved.update):
+        with (
+            mock.patch("multi_memory.cli.load_config", return_value=config),
+            mock.patch("multi_memory.cli.save_config", side_effect=saved.update),
+        ):
             _cmd_remove(args)
         out = capsys.readouterr().out
         assert "Removed" in out
@@ -262,11 +284,15 @@ class TestCmdRemove:
         saved = {}
         args = argparse.Namespace(backend="mem0")
         call_count = [0]
+
         def capture_save(cfg):
             call_count[0] += 1
             saved.update(cfg)
-        with mock.patch("multi_memory.cli.load_config", return_value=config), \
-             mock.patch("multi_memory.cli.save_config", side_effect=capture_save):
+
+        with (
+            mock.patch("multi_memory.cli.load_config", return_value=config),
+            mock.patch("multi_memory.cli.save_config", side_effect=capture_save),
+        ):
             _cmd_remove(args)
         out = capsys.readouterr().out
         assert "Removed" in out

@@ -1,4 +1,5 @@
 """Tests for multi_memory.discovery — backend discovery and installation detection."""
+
 # ruff: noqa: PLR2004  # magic numbers in tests are normal
 from __future__ import annotations
 
@@ -99,11 +100,12 @@ class TestDiscoverBackends:
 
     def test_installed_flag_false_for_unavailable(self):
         """Backend with non-installed module reports installed=False."""
-        with mock.patch(
-            "multi_memory.discovery.find_spec", return_value=None
-        ), mock.patch(
-            "multi_memory.discovery._is_mnemosyne_plugin_installed",
-            return_value=False,
+        with (
+            mock.patch("multi_memory.discovery.find_spec", return_value=None),
+            mock.patch(
+                "multi_memory.discovery._is_mnemosyne_plugin_installed",
+                return_value=False,
+            ),
         ):
             results = discover_backends()
         for entry in results:
@@ -111,12 +113,13 @@ class TestDiscoverBackends:
 
     def test_find_spec_called_for_non_mnemosyne_backends(self):
         """discover_backends calls find_spec for all 8 non-mnemosyne backends."""
-        with mock.patch(
-            "multi_memory.discovery._is_mnemosyne_plugin_installed",
-            return_value=False,
-        ), mock.patch(
-            "multi_memory.discovery.find_spec"
-        ) as mock_fs:
+        with (
+            mock.patch(
+                "multi_memory.discovery._is_mnemosyne_plugin_installed",
+                return_value=False,
+            ),
+            mock.patch("multi_memory.discovery.find_spec") as mock_fs,
+        ):
             mock_fs.return_value = mock.MagicMock()
             discover_backends()
         expected_calls = [
@@ -133,6 +136,7 @@ class TestDiscoverBackends:
 
     def test_individual_install_detection(self):
         """Each backend is independently checked."""
+
         def find_spec_side_effect(module):
             if module == "plugins.memory.holographic":
                 return mock.MagicMock()
@@ -140,12 +144,15 @@ class TestDiscoverBackends:
                 return mock.MagicMock()
             return None
 
-        with mock.patch(
-            "multi_memory.discovery._is_mnemosyne_plugin_installed",
-            return_value=False,
-        ), mock.patch(
-            "multi_memory.discovery.find_spec",
-            side_effect=find_spec_side_effect,
+        with (
+            mock.patch(
+                "multi_memory.discovery._is_mnemosyne_plugin_installed",
+                return_value=False,
+            ),
+            mock.patch(
+                "multi_memory.discovery.find_spec",
+                side_effect=find_spec_side_effect,
+            ),
         ):
             results = discover_backends()
 
@@ -176,21 +183,26 @@ class TestInstalledBackends:
             assert all(isinstance(k, str) for k in result)
 
     def test_includes_mnemosyne_when_plugin_exists(self):
-        with mock.patch(
-            "multi_memory.discovery._is_mnemosyne_plugin_installed",
-            return_value=True,
-        ), mock.patch(
-            "multi_memory.discovery.find_spec", return_value=None,
+        with (
+            mock.patch(
+                "multi_memory.discovery._is_mnemosyne_plugin_installed",
+                return_value=True,
+            ),
+            mock.patch(
+                "multi_memory.discovery.find_spec",
+                return_value=None,
+            ),
         ):
             result = installed_backends()
         assert "mnemosyne" in result
 
     def test_empty_when_none_installed(self):
-        with mock.patch(
-            "multi_memory.discovery.find_spec", return_value=None
-        ), mock.patch(
-            "multi_memory.discovery._is_mnemosyne_plugin_installed",
-            return_value=False,
+        with (
+            mock.patch("multi_memory.discovery.find_spec", return_value=None),
+            mock.patch(
+                "multi_memory.discovery._is_mnemosyne_plugin_installed",
+                return_value=False,
+            ),
         ):
             result = installed_backends()
         assert result == []

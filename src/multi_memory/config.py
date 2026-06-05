@@ -76,10 +76,7 @@ def get_enabled_backends(config: dict | None = None) -> list[str]:
     if isinstance(multi_cfg, dict):
         backends = multi_cfg.get("backends")
         if isinstance(backends, dict) and backends:
-            return [
-                name for name, enabled in backends.items()
-                if not _is_disabled(enabled)
-            ]
+            return [name for name, enabled in backends.items() if not _is_disabled(enabled)]
 
     # List format
     providers = config.get("providers")

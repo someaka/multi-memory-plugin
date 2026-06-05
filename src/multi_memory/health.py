@@ -62,7 +62,8 @@ class HealthTracker:
                 if not was_already_open:
                     logger.warning(
                         "[multi-memory] circuit OPEN for '%s' after %d failures",
-                        backend_key, new_count,
+                        backend_key,
+                        new_count,
                     )
                     self._opened_at[backend_key] = time.monotonic()
                     self._cooldown[backend_key] = _HALF_OPEN_COOLDOWN_SECONDS

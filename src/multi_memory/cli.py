@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 
 from multi_memory import _is_disabled
 
@@ -22,6 +23,7 @@ except ImportError:
     # Standalone testing: stubs
     def load_config() -> dict:  # type: ignore[misc]
         return {}
+
     def save_config(config: dict) -> None:  # type: ignore[misc]
         pass
 
@@ -36,36 +38,46 @@ def register_cli(subparser: argparse.ArgumentParser) -> None:
 
     # hermes multi status
     status_parser = subs.add_parser(
-        "status", help="Show active backends and health status",
+        "status",
+        help="Show active backends and health status",
     )
     status_parser.add_argument(
-        "--json", dest="json_output", action="store_true",
+        "--json",
+        dest="json_output",
+        action="store_true",
         help="Machine-readable JSON output",
     )
 
     # hermes multi list
     list_parser = subs.add_parser(
-        "list", help="List all known backends (installed and available)",
+        "list",
+        help="List all known backends (installed and available)",
     )
     list_parser.add_argument(
-        "--json", dest="json_output", action="store_true",
+        "--json",
+        dest="json_output",
+        action="store_true",
         help="Machine-readable JSON output",
     )
 
     # hermes multi add <backend>
     add_parser = subs.add_parser(
-        "add", help="Add a memory backend to the active config",
+        "add",
+        help="Add a memory backend to the active config",
     )
     add_parser.add_argument(
-        "backend", help="Backend name (e.g. mnemosyne, holographic, mem0)",
+        "backend",
+        help="Backend name (e.g. mnemosyne, holographic, mem0)",
     )
 
     # hermes multi remove <backend>
     remove_parser = subs.add_parser(
-        "remove", help="Remove a memory backend from the active config",
+        "remove",
+        help="Remove a memory backend from the active config",
     )
     remove_parser.add_argument(
-        "backend", help="Backend name to remove",
+        "backend",
+        help="Backend name to remove",
     )
 
 
@@ -99,8 +111,7 @@ def _get_active_backends(memory_cfg: dict) -> list[str]:
     providers_list = memory_cfg.get("providers", [])
 
     if backends_dict:
-        return [k for k, v in backends_dict.items()
-                if not _is_disabled(v)]
+        return [k for k, v in backends_dict.items() if not _is_disabled(v)]
     elif providers_list:
         return [p for p in providers_list if p]
     return []
@@ -133,18 +144,24 @@ def _cmd_status(args: argparse.Namespace) -> None:
     backend_info = {}
     try:
         from multi_memory.discovery import discover_backends  # noqa: PLC0415
+
         for b in discover_backends():
             backend_info[b["config_key"]] = b.get("installed", False)
-    except Exception:
-        pass
+    except Exception as exc:
+        logging.debug("[multi] backend discovery failed: %s", exc)
 
     if json_out:
-        print(json.dumps({
-            "provider": "multi",
-            "active_backends": active,
-            "config_format": "backends" if backends_dict else "providers",
-            "installed": {k: v for k, v in backend_info.items() if k in active},
-        }, indent=2))
+        print(
+            json.dumps(
+                {
+                    "provider": "multi",
+                    "active_backends": active,
+                    "config_format": "backends" if backends_dict else "providers",
+                    "installed": {k: v for k, v in backend_info.items() if k in active},
+                },
+                indent=2,
+            )
+        )
         return
 
     print(f"\n  Multi-Memory Provider — {len(active)} active backend(s)")
@@ -160,7 +177,7 @@ def _cmd_status(args: argparse.Namespace) -> None:
     print(f"    {'─' * 15} {'─' * 12} {'─' * 40}")
 
     for name in active:
-        installed = backend_info.get(name, None)
+        installed = backend_info.get(name)
         if installed is True:
             status = "✓ installed"
             marker = "→"
@@ -187,11 +204,13 @@ def _cmd_list(args: argparse.Namespace) -> None:
     if json_out:
         rows = []
         for name, desc in ALL_BACKENDS.items():
-            rows.append({
-                "name": name,
-                "description": desc,
-                "active": name in active_set,
-            })
+            rows.append(
+                {
+                    "name": name,
+                    "description": desc,
+                    "active": name in active_set,
+                }
+            )
         print(json.dumps(rows, indent=2))
         return
 
@@ -294,12 +313,11 @@ def _cmd_remove(args: argparse.Namespace) -> None:
     remaining = _get_active_backends(memory_cfg)
     if remaining:
         print(f"\n  ✓ Removed '{backend}'. Active: {', '.join(remaining)}\n")
+    # Last backend removed — provider: multi with zero backends is broken
+    elif memory_cfg.get("provider") == "multi":
+        memory_cfg["provider"] = "default"
+        save_config(config)
+        print(f"\n  ✓ Removed '{backend}'. No backends active.")
+        print("  Switched memory.provider back to 'default' (built-in only).\n")
     else:
-        # Last backend removed — provider: multi with zero backends is broken
-        if memory_cfg.get("provider") == "multi":
-            memory_cfg["provider"] = "default"
-            save_config(config)
-            print(f"\n  ✓ Removed '{backend}'. No backends active.")
-            print("  Switched memory.provider back to 'default' (built-in only).\n")
-        else:
-            print(f"\n  ✓ Removed '{backend}'. No backends active — built-in only.\n")
+        print(f"\n  ✓ Removed '{backend}'. No backends active — built-in only.\n")

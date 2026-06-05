@@ -1,4 +1,5 @@
 """Tests for multi_memory.budget (ToolBudgetWarning) and validate (NamespaceValidator)."""
+
 # ruff: noqa: PLC0415, PLR2004  # intentional imports-inside-functions + magic numbers in tests
 from __future__ import annotations
 
@@ -106,17 +107,19 @@ class TestNamespaceValidator:
             _SupermemoryAdapter,
         )
 
-        validator = NamespaceValidator([
-            _MnemosyneAdapter,
-            _Mem0Adapter,
-            _HolographicAdapter,
-            _HonchoAdapter,
-            _OpenVikingAdapter,
-            _HindsightAdapter,
-            _RetainDBAdapter,
-            _ByteRoverAdapter,
-            _SupermemoryAdapter,
-        ])
+        validator = NamespaceValidator(
+            [
+                _MnemosyneAdapter,
+                _Mem0Adapter,
+                _HolographicAdapter,
+                _HonchoAdapter,
+                _OpenVikingAdapter,
+                _HindsightAdapter,
+                _RetainDBAdapter,
+                _ByteRoverAdapter,
+                _SupermemoryAdapter,
+            ]
+        )
         warnings = validator.validate_all()
         assert warnings == []
 

@@ -23,6 +23,7 @@ Or use the INVESTIGATION-C canonical::
         - "holographic"
         - "openviking"
 """
+
 from __future__ import annotations
 
 import logging
@@ -34,19 +35,23 @@ import yaml
 try:
     from tools.registry import tool_error
 except ImportError:
+
     def tool_error(msg: str) -> str:
         """Standalone fallback when Hermes tools.registry is unavailable."""
         return f"[multi-memory] ERROR: {msg}"
+
 
 try:
     from agent.memory_provider import MemoryProvider
 except ImportError:
     # Standalone / testing: provide a minimal base class matching the ABC
     import abc
+
     class MemoryProvider(abc.ABC):  # type: ignore[no-redef]
         """Stub base class for standalone testing outside Hermes."""
 
         name: str = ""
+
         @abc.abstractmethod
         def is_available(self) -> bool: ...
         @abc.abstractmethod
@@ -55,24 +60,65 @@ except ImportError:
         def get_tool_schemas(self) -> list[dict]: ...
         @abc.abstractmethod
         def handle_tool_call(self, tool_name: str, args: dict, **kwargs) -> str: ...
-        def shutdown(self) -> None: pass  # noqa: B027
-        def system_prompt_block(self) -> str: return ""
-        def prefetch(self, query: str, **kwargs) -> str: return ""
-        def queue_prefetch(self, query: str, **kwargs) -> None: pass  # noqa: B027
-        def sync_turn(self, user_content: str, assistant_content: str, **kwargs) -> None: pass  # noqa: B027
-        def on_turn_start(self, turn_number: int = 0, message: str = "",  # noqa: B027
-                           **kwargs: Any) -> None: pass
-        def on_session_end(self, messages: list[dict]) -> None: pass  # noqa: B027
-        def on_session_switch(self, new_session_id: str = "",  # noqa: B027
-                               *, parent_session_id: str = "",
-                               reset: bool = False,
-                               **kwargs: Any) -> None: pass
-        def on_memory_write(self, action: str, target: str, content: str,  # noqa: B027
-                             metadata: dict[str, Any] | None = None) -> None: pass
-        def on_delegation(self, task: str = "", result: str = "",  # noqa: B027
-                           *, child_session_id: str = "",
-                           **kwargs: Any) -> None: pass
-        def on_pre_compress(self, messages: list[dict]) -> str: return ""
+        def shutdown(self) -> None:  # noqa: B027
+            pass
+
+        def system_prompt_block(self) -> str:
+            return ""
+
+        def prefetch(self, query: str, **kwargs) -> str:
+            return ""
+
+        def queue_prefetch(self, query: str, **kwargs) -> None:  # noqa: B027
+            pass
+
+        def sync_turn(self, user_content: str, assistant_content: str, **kwargs) -> None:  # noqa: B027
+            pass
+
+        def on_turn_start(  # noqa: B027
+            self,
+            turn_number: int = 0,
+            message: str = "",
+            **kwargs: Any,
+        ) -> None:
+            pass
+
+        def on_session_end(self, messages: list[dict]) -> None:  # noqa: B027
+            pass
+
+        def on_session_switch(  # noqa: B027
+            self,
+            new_session_id: str = "",
+            *,
+            parent_session_id: str = "",
+            reset: bool = False,
+            **kwargs: Any,
+        ) -> None:
+            pass
+
+        def on_memory_write(  # noqa: B027
+            self,
+            action: str,
+            target: str,
+            content: str,
+            metadata: dict[str, Any] | None = None,
+        ) -> None:
+            pass
+
+        def on_delegation(  # noqa: B027
+            self,
+            task: str = "",
+            result: str = "",
+            *,
+            child_session_id: str = "",
+            **kwargs: Any,
+        ) -> None:
+            pass
+
+        def on_pre_compress(self, messages: list[dict]) -> str:
+            return ""
+
+
 from .adapters import (
     _ByteRoverAdapter,
     _GenericAdapter,
@@ -130,7 +176,7 @@ def register(ctx) -> None:
     ctx.register_memory_provider(MultiMemoryProvider())
 
     if hasattr(ctx, "register_cli_command"):
-        from .cli import register_cli, multi_command  # noqa: PLC0415
+        from .cli import multi_command, register_cli  # noqa: PLC0415
 
         ctx.register_cli_command(
             name="multi",
@@ -178,10 +224,7 @@ class MultiMemoryProvider(MemoryProvider):
         multi_cfg = config.get("multi", {})
         backends = multi_cfg.get("backends", {})
         if backends:
-            items = ", ".join(
-                k if v in ({}, True) else f"{k}({v})"
-                for k, v in backends.items()
-            )
+            items = ", ".join(k if v in ({}, True) else f"{k}({v})" for k, v in backends.items())
             return [("backends", items)]
         providers = config.get("providers", [])
         if providers:
@@ -192,6 +235,7 @@ class MultiMemoryProvider(MemoryProvider):
         """Read config.yaml and populate sub-adapters."""
         try:
             from .config import _get_config_path  # noqa: PLC0415
+
             cfg_path = _get_config_path()
             with open(cfg_path) as f:
                 cfg = yaml.safe_load(f) or {}
@@ -213,13 +257,15 @@ class MultiMemoryProvider(MemoryProvider):
                 except Exception as exc:  # noqa: PERF203
                     logger.warning(
                         "[multi-memory] %s failed schema validation — NOT registered: %s",
-                        adapter.name, exc,
+                        adapter.name,
+                        exc,
                     )
                     self._health.record_failure(adapter.name)
             self._subs = validated
             logger.info(
                 "[multi-memory] loaded %d backends: %s",
-                len(self._subs), [s.name for s in self._subs]
+                len(self._subs),
+                [s.name for s in self._subs],
             )
         except Exception as exc:
             logger.warning("[multi-memory] config load failed: %s", exc)
@@ -236,8 +282,9 @@ class MultiMemoryProvider(MemoryProvider):
         with self._lock:
             return list(self._subs)
 
-    def _fan_out(self, method: str, *args: Any,
-                  **kwargs: Any) -> list[tuple[_SubProviderAdapter, Any]]:
+    def _fan_out(
+        self, method: str, *args: Any, **kwargs: Any
+    ) -> list[tuple[_SubProviderAdapter, Any]]:
         """Call *method* on every active sub, returning [(sub, result), ...].
 
         Subs with circuit open are skipped.  Exceptions are caught and logged;
@@ -258,7 +305,9 @@ class MultiMemoryProvider(MemoryProvider):
                 self._health.record_failure(sub.name)
                 logger.warning(
                     "[multi-memory] %s::%s(): %s",
-                    sub.name, method, exc,
+                    sub.name,
+                    method,
+                    exc,
                 )
         return results
 
@@ -299,7 +348,8 @@ class MultiMemoryProvider(MemoryProvider):
             except Exception as exc:
                 logger.warning(
                     "[multi-memory] %s get_tool_schemas() failed: %s — skipping",
-                    sub.name, exc,
+                    sub.name,
+                    exc,
                 )
                 self._health.record_failure(sub.name)
                 continue
@@ -316,7 +366,7 @@ class MultiMemoryProvider(MemoryProvider):
         # Match by adapter PREFIX (not sub.name) — handles cases where
         # the config key differs from the tool prefix (e.g. ByteRover: brv_).
         for sub in subs:
-            pfx = getattr(type(sub), 'PREFIX', '') or sub.name
+            pfx = getattr(type(sub), "PREFIX", "") or sub.name
             if tool_name.startswith(f"{pfx}_"):
                 return sub.handle_tool_call(tool_name, args, **kwargs)
         # Fallback: try all subs without prefix match
@@ -328,11 +378,12 @@ class MultiMemoryProvider(MemoryProvider):
                 errors.append(f"{sub.name}: {exc}")
                 logger.warning(
                     "[multi-memory] fallback %s for '%s': %s",
-                    sub.name, tool_name, exc,
+                    sub.name,
+                    tool_name,
+                    exc,
                 )
         return tool_error(
-            f"No sub-provider handles tool '{tool_name}'"
-            f" — tried: {'; '.join(errors)}"
+            f"No sub-provider handles tool '{tool_name}' — tried: {'; '.join(errors)}"
         )
 
     # ─── Runtime sub-provider management ──────────────────────────────────
@@ -353,7 +404,8 @@ class MultiMemoryProvider(MemoryProvider):
         except Exception as exc:
             logger.warning(
                 "[multi-memory] add_provider: '%s' failed schema validation — rejected: %s",
-                adapter.name, exc,
+                adapter.name,
+                exc,
             )
             return False
         with self._lock:
@@ -362,9 +414,7 @@ class MultiMemoryProvider(MemoryProvider):
                 return False
             self._subs.append(adapter)
             self._health.reset(adapter.name)
-        logger.info(
-            "[multi-memory] added provider '%s' (%d tools)", adapter.name, len(schemas)
-        )
+        logger.info("[multi-memory] added provider '%s' (%d tools)", adapter.name, len(schemas))
         return True
 
     def remove_provider(self, name: str) -> bool:
@@ -427,38 +477,47 @@ class MultiMemoryProvider(MemoryProvider):
     def queue_prefetch(self, query: str, *, session_id: str = "") -> None:
         self._fan_out("queue_prefetch", query, session_id=session_id)
 
-    def sync_turn(self, user_content: str, assistant_content: str, *,
-                   session_id: str = "", **kwargs: Any) -> None:
+    def sync_turn(
+        self, user_content: str, assistant_content: str, *, session_id: str = "", **kwargs: Any
+    ) -> None:
         messages = kwargs.get("messages")
-        self._fan_out("sync_turn", user_content, assistant_content,
-                       session_id=session_id, messages=messages)
+        self._fan_out(
+            "sync_turn", user_content, assistant_content, session_id=session_id, messages=messages
+        )
 
-    def on_turn_start(self, turn_number: int = 0, message: str = "",
-                       **kwargs: Any) -> None:
+    def on_turn_start(self, turn_number: int = 0, message: str = "", **kwargs: Any) -> None:
         self._fan_out("on_turn_start", turn_number, message, **kwargs)
 
     def on_session_end(self, messages: list[dict]) -> None:
         self._fan_out("on_session_end", messages)
 
-    def on_session_switch(self, new_session_id: str = "", *,
-                           parent_session_id: str = "",
-                           reset: bool = False,
-                           **kwargs: Any) -> None:
+    def on_session_switch(
+        self,
+        new_session_id: str = "",
+        *,
+        parent_session_id: str = "",
+        reset: bool = False,
+        **kwargs: Any,
+    ) -> None:
         if not new_session_id:
             return
-        self._fan_out("on_session_switch", new_session_id,
-                       parent_session_id=parent_session_id,
-                       reset=reset, **kwargs)
+        self._fan_out(
+            "on_session_switch",
+            new_session_id,
+            parent_session_id=parent_session_id,
+            reset=reset,
+            **kwargs,
+        )
 
-    def on_memory_write(self, action: str, target: str, content: str,
-                         metadata: dict[str, Any] | None = None) -> None:
+    def on_memory_write(
+        self, action: str, target: str, content: str, metadata: dict[str, Any] | None = None
+    ) -> None:
         self._fan_out("on_memory_write", action, target, content, metadata)
 
-    def on_delegation(self, task: str = "", result: str = "", *,
-                       child_session_id: str = "",
-                       **kwargs: Any) -> None:
-        self._fan_out("on_delegation", task, result,
-                       child_session_id=child_session_id, **kwargs)
+    def on_delegation(
+        self, task: str = "", result: str = "", *, child_session_id: str = "", **kwargs: Any
+    ) -> None:
+        self._fan_out("on_delegation", task, result, child_session_id=child_session_id, **kwargs)
 
     def on_pre_compress(self, messages: list[dict[str, Any]]) -> str:
         results = self._fan_out("on_pre_compress", messages)
@@ -468,10 +527,11 @@ class MultiMemoryProvider(MemoryProvider):
 
 # ── Helpers ────────────────────────────────────────────────────────────────
 
+
 def _close_or_shutdown(sub: _SubProviderAdapter, name: str) -> None:
     """Close or shutdown a sub-provider, preferring close()."""
     try:
-        close_fn = getattr(sub, 'close', None)
+        close_fn = getattr(sub, "close", None)
         if callable(close_fn):
             close_fn()
         else:
@@ -528,7 +588,8 @@ def _load_backends_from_config(config: dict) -> list[_SubProviderAdapter]:
                 except Exception as exc:
                     logger.warning(
                         "[multi-memory] %s listed in config but failed to load: %s",
-                        key, exc,
+                        key,
+                        exc,
                     )
                 break
         else:
@@ -547,32 +608,37 @@ def _try_generic_backend(name: str, backends: list[_SubProviderAdapter]) -> None
     """
     try:
         from plugins.memory import load_memory_provider  # noqa: PLC0415
+
         provider = load_memory_provider(name)
         if provider is None:
             logger.warning(
                 "[multi-memory] backend '%s' not found in hardcoded adapters "
-                "or Hermes plugin discovery — skipping", name,
+                "or Hermes plugin discovery — skipping",
+                name,
             )
             return
         adapter = _GenericAdapter(provider, name)
         if adapter.is_available():
             backends.append(adapter)
             logger.info(
-                "[multi-memory] '%s' loaded via plugin discovery (generic adapter)", name,
+                "[multi-memory] '%s' loaded via plugin discovery (generic adapter)",
+                name,
             )
         else:
             logger.warning(
-                "[multi-memory] '%s' discovered but not available "
-                "(missing credentials or config?)", name,
+                "[multi-memory] '%s' discovered but not available (missing credentials or config?)",
+                name,
             )
     except ImportError:
         # plugins.memory not available (standalone mode)
         logger.warning(
             "[multi-memory] backend '%s' not in hardcoded adapters "
-            "and plugin discovery unavailable — skipping", name,
+            "and plugin discovery unavailable — skipping",
+            name,
         )
     except Exception as exc:
         logger.warning(
             "[multi-memory] backend '%s' failed during plugin discovery: %s",
-            name, exc,
+            name,
+            exc,
         )

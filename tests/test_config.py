@@ -1,4 +1,5 @@
 """Tests for multi_memory.config and config-adjacent functions in __init__.py."""
+
 from __future__ import annotations
 
 from unittest import mock
@@ -21,18 +22,22 @@ class TestNormaliseMultiConfig:
 
     def test_both_formats_providers_wins(self):
         """providers list wins over multi.backends when both present."""
-        result = _normalise_multi_config({
-            "providers": ["holographic"],
-            "multi": {"backends": {"mnemosyne": {}}},
-        })
+        result = _normalise_multi_config(
+            {
+                "providers": ["holographic"],
+                "multi": {"backends": {"mnemosyne": {}}},
+            }
+        )
         assert result == {"holographic": {}}
 
     def test_providers_not_a_list(self):
         """providers that isn't a list triggers multi.backends fallback."""
-        result = _normalise_multi_config({
-            "providers": "not-a-list",
-            "multi": {"backends": {"mnemosyne": {}}},
-        })
+        result = _normalise_multi_config(
+            {
+                "providers": "not-a-list",
+                "multi": {"backends": {"mnemosyne": {}}},
+            }
+        )
         assert result == {"mnemosyne": {}}
 
     def test_missing_multi_key(self):
@@ -40,9 +45,11 @@ class TestNormaliseMultiConfig:
         assert result == {}
 
     def test_backends_not_a_dict(self):
-        result = _normalise_multi_config({
-            "multi": {"backends": "not-a-dict"},
-        })
+        result = _normalise_multi_config(
+            {
+                "multi": {"backends": "not-a-dict"},
+            }
+        )
         assert result == {}
 
 

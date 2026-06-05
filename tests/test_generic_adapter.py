@@ -1,4 +1,5 @@
 """Tests for _GenericAdapter and custom backend discovery."""
+
 # ruff: noqa: PLC0415  # intentional imports-inside-functions in tests
 from __future__ import annotations
 
@@ -10,6 +11,7 @@ from multi_memory.adapters import _GenericAdapter
 
 class FakeProvider:
     """A fake MemoryProvider that isn't one of the 9 hardcoded backends."""
+
     name = "custom_backend"
 
     def is_available(self):

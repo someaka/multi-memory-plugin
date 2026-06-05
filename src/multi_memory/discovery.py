@@ -14,15 +14,15 @@ from multi_memory.config import _get_hermes_home
 
 # Each entry: (config_key, module_path, label)
 _BACKEND_REGISTRY: list[tuple[str, str, str]] = [
-    ("mnemosyne",   "mnemosyne",                   "Mnemosyne (plugin)"),
-    ("mem0",        "plugins.memory.mem0",         "Mem0"),
-    ("holographic", "plugins.memory.holographic",   "Holographic (stdlib)"),
-    ("honcho",      "plugins.memory.honcho",        "Honcho"),
-    ("openviking",  "plugins.memory.openviking",    "OpenViking"),
-    ("hindsight",   "plugins.memory.hindsight",     "Hindsight"),
-    ("retaindb",    "plugins.memory.retaindb",      "RetainDB"),
-    ("byterover",   "plugins.memory.byterover",     "ByteRover"),
-    ("supermemory", "plugins.memory.supermemory",   "Supermemory"),
+    ("mnemosyne", "mnemosyne", "Mnemosyne (plugin)"),
+    ("mem0", "plugins.memory.mem0", "Mem0"),
+    ("holographic", "plugins.memory.holographic", "Holographic (stdlib)"),
+    ("honcho", "plugins.memory.honcho", "Honcho"),
+    ("openviking", "plugins.memory.openviking", "OpenViking"),
+    ("hindsight", "plugins.memory.hindsight", "Hindsight"),
+    ("retaindb", "plugins.memory.retaindb", "RetainDB"),
+    ("byterover", "plugins.memory.byterover", "ByteRover"),
+    ("supermemory", "plugins.memory.supermemory", "Supermemory"),
 ]
 
 __all__ = ["discover_backends", "installed_backends"]

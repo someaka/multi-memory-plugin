@@ -37,7 +37,9 @@ def _try_import(module: str, cls: str) -> type | None:
     except Exception as exc:
         logger.debug(
             "[multi-memory] _try_import(%s.%s) failed: %s",
-            module, cls, exc,
+            module,
+            cls,
+            exc,
         )
         return None
 
@@ -53,7 +55,7 @@ def _renorm_schemas(raw: list[dict], prefix: str) -> list[dict]:
     for s in raw:
         name = s["name"]
         if name.startswith(pfx):
-            name = name[len(pfx):]
+            name = name[len(pfx) :]
         result.append({**s, "name": f"{prefix}_{name}"})
     return result
 
@@ -65,9 +67,9 @@ class _SubProviderAdapter:
     """Base class for all sub-provider adapters — thin delegation wrapper."""
 
     CONFIG_KEY: str = ""
-    MODULE:     str = ""
-    CLASS:      str = ""
-    PREFIX:     str = ""   # tool name prefix = config-key (full name avoids collision)
+    MODULE: str = ""
+    CLASS: str = ""
+    PREFIX: str = ""  # tool name prefix = config-key (full name avoids collision)
 
     def __init__(self, **kwargs: Any):
         real_cls = _try_import(self.MODULE, self.CLASS)
@@ -109,17 +111,25 @@ class _SubProviderAdapter:
     def queue_prefetch(self, query: str, *, session_id: str = "") -> None:
         self._delegate.queue_prefetch(query, session_id=session_id)
 
-    def sync_turn(self, user_content: str, assistant_content: str, *,
-                   session_id: str = "",
-                   messages: list[dict] | None = None) -> None:
+    def sync_turn(
+        self,
+        user_content: str,
+        assistant_content: str,
+        *,
+        session_id: str = "",
+        messages: list[dict] | None = None,
+    ) -> None:
         if messages is not None and self._sync_accepts_messages():
             self._delegate.sync_turn(
-                user_content, assistant_content,
-                session_id=session_id, messages=messages,
+                user_content,
+                assistant_content,
+                session_id=session_id,
+                messages=messages,
             )
         else:
             self._delegate.sync_turn(
-                user_content, assistant_content,
+                user_content,
+                assistant_content,
                 session_id=session_id,
             )
 
@@ -132,18 +142,24 @@ class _SubProviderAdapter:
     def on_session_end(self, messages: list[dict]) -> None:
         self._delegate.on_session_end(messages)
 
-    def on_session_switch(self, new_session_id: str = "", *,
-                           parent_session_id: str = "",
-                           reset: bool = False,
-                           **kwargs: Any) -> None:
+    def on_session_switch(
+        self,
+        new_session_id: str = "",
+        *,
+        parent_session_id: str = "",
+        reset: bool = False,
+        **kwargs: Any,
+    ) -> None:
         self._delegate.on_session_switch(
             new_session_id,
             parent_session_id=parent_session_id,
-            reset=reset, **kwargs,
+            reset=reset,
+            **kwargs,
         )
 
-    def on_memory_write(self, action: str, target: str, content: str,
-                         metadata: dict[str, Any] | None = None) -> None:
+    def on_memory_write(
+        self, action: str, target: str, content: str, metadata: dict[str, Any] | None = None
+    ) -> None:
         mode = self._metadata_write_mode()
         if mode == "keyword":
             self._delegate.on_memory_write(action, target, content, metadata=dict(metadata or {}))
@@ -152,12 +168,14 @@ class _SubProviderAdapter:
         else:
             self._delegate.on_memory_write(action, target, content)
 
-    def on_delegation(self, task: str = "", result: str = "", *,
-                       child_session_id: str = "",
-                       **kwargs: Any) -> None:
+    def on_delegation(
+        self, task: str = "", result: str = "", *, child_session_id: str = "", **kwargs: Any
+    ) -> None:
         self._delegate.on_delegation(
-            task, result,
-            child_session_id=child_session_id, **kwargs,
+            task,
+            result,
+            child_session_id=child_session_id,
+            **kwargs,
         )
 
     def on_pre_compress(self, messages: list[dict[str, Any]]) -> str:
@@ -187,17 +205,17 @@ class _SubProviderAdapter:
             self._cached_write_mode = "keyword"
         else:
             accepted = [
-                p for p in params
-                if p.kind in {
+                p
+                for p in params
+                if p.kind
+                in {
                     inspect.Parameter.POSITIONAL_ONLY,
                     inspect.Parameter.POSITIONAL_OR_KEYWORD,
                     inspect.Parameter.KEYWORD_ONLY,
                 }
             ]
             self._cached_write_mode = (
-                "positional"
-                if len(accepted) >= _MIN_POS_ARGS_FOR_METADATA
-                else "legacy"
+                "positional" if len(accepted) >= _MIN_POS_ARGS_FOR_METADATA else "legacy"
             )
         return self._cached_write_mode
 
@@ -220,7 +238,7 @@ class _SubProviderAdapter:
     def close(self) -> None:
         """Close underlying connections.  Override in subclasses that manage
         their own connection pools (e.g. RetainDB SQLite thread-locals)."""
-        close_fn = getattr(self._delegate, 'close', None)
+        close_fn = getattr(self._delegate, "close", None)
         if callable(close_fn):
             close_fn()
 
@@ -235,7 +253,7 @@ class _GenericAdapter(_SubProviderAdapter):
     """
 
     CONFIG_KEY = ""  # Set dynamically
-    PREFIX = ""      # No prefix — provider handles its own names
+    PREFIX = ""  # No prefix — provider handles its own names
 
     def __init__(self, provider: Any, name: str, **kwargs: Any):
         self._delegate = provider
@@ -259,22 +277,22 @@ class _GenericAdapter(_SubProviderAdapter):
 
 # ── Concrete adapters ──────────────────────────────────────────────────────
 
+
 class _MnemosyneAdapter(_SubProviderAdapter):
     CONFIG_KEY = "mnemosyne"
-    MODULE     = "mnemosyne"
-    CLASS      = "MemoryProvider"
-    PREFIX     = "mnemosyne"   # stdlib-backed, no extra pip deps
+    MODULE = "mnemosyne"
+    CLASS = "MemoryProvider"
+    PREFIX = "mnemosyne"  # stdlib-backed, no extra pip deps
 
     def __init__(self, **kwargs: Any):
         # Mnemosyne is a user-installed plugin (~/.hermes/plugins/mnemosyne/),
         # not a pip package — use the Hermes plugin loader to find it.
         try:
             from plugins.memory import load_memory_provider  # noqa: PLC0415
+
             provider = load_memory_provider("mnemosyne")
             if provider is None:
-                raise ImportError(
-                    "[multi-memory] backend 'mnemosyne' not found via plugin loader"
-                )
+                raise ImportError("[multi-memory] backend 'mnemosyne' not found via plugin loader")
             self._delegate = provider
             self._cached_write_mode = None
             self._cached_accepts_messages = None
@@ -296,48 +314,48 @@ class _MnemosyneAdapter(_SubProviderAdapter):
 
 class _Mem0Adapter(_SubProviderAdapter):
     CONFIG_KEY = "mem0"
-    MODULE     = "plugins.memory.mem0"
-    CLASS      = "Mem0MemoryProvider"
-    PREFIX     = "mem0"
+    MODULE = "plugins.memory.mem0"
+    CLASS = "Mem0MemoryProvider"
+    PREFIX = "mem0"
 
 
 class _HolographicAdapter(_SubProviderAdapter):
     CONFIG_KEY = "holographic"
-    MODULE     = "plugins.memory.holographic"
-    CLASS      = "HolographicMemoryProvider"
-    PREFIX     = "holographic"
+    MODULE = "plugins.memory.holographic"
+    CLASS = "HolographicMemoryProvider"
+    PREFIX = "holographic"
 
 
 class _HonchoAdapter(_SubProviderAdapter):
     CONFIG_KEY = "honcho"
-    MODULE     = "plugins.memory.honcho"
-    CLASS      = "HonchoMemoryProvider"
-    PREFIX     = "honcho"
+    MODULE = "plugins.memory.honcho"
+    CLASS = "HonchoMemoryProvider"
+    PREFIX = "honcho"
 
 
 class _OpenVikingAdapter(_SubProviderAdapter):
     CONFIG_KEY = "openviking"
-    MODULE     = "plugins.memory.openviking"
-    CLASS      = "OpenVikingMemoryProvider"
-    PREFIX     = "viking"  # tool prefix differs from config key
+    MODULE = "plugins.memory.openviking"
+    CLASS = "OpenVikingMemoryProvider"
+    PREFIX = "viking"  # tool prefix differs from config key
 
 
 class _HindsightAdapter(_SubProviderAdapter):
     CONFIG_KEY = "hindsight"
-    MODULE     = "plugins.memory.hindsight"
-    CLASS      = "HindsightMemoryProvider"
-    PREFIX     = "hindsight"
+    MODULE = "plugins.memory.hindsight"
+    CLASS = "HindsightMemoryProvider"
+    PREFIX = "hindsight"
 
 
 class _RetainDBAdapter(_SubProviderAdapter):
     CONFIG_KEY = "retaindb"
-    MODULE     = "plugins.memory.retaindb"
-    CLASS      = "RetainDBMemoryProvider"
-    PREFIX     = "retaindb"
+    MODULE = "plugins.memory.retaindb"
+    CLASS = "RetainDBMemoryProvider"
+    PREFIX = "retaindb"
 
     def close(self) -> None:
         """Shutdown writer threads and close SQLite thread-local connections."""
-        close_fn = getattr(self._delegate, 'close', None)
+        close_fn = getattr(self._delegate, "close", None)
         if callable(close_fn):
             close_fn()
         else:
@@ -346,13 +364,13 @@ class _RetainDBAdapter(_SubProviderAdapter):
 
 class _ByteRoverAdapter(_SubProviderAdapter):
     CONFIG_KEY = "byterover"
-    MODULE     = "plugins.memory.byterover"
-    CLASS      = "ByteRoverMemoryProvider"
-    PREFIX     = "brv"  # tool prefix differs from config key
+    MODULE = "plugins.memory.byterover"
+    CLASS = "ByteRoverMemoryProvider"
+    PREFIX = "brv"  # tool prefix differs from config key
 
 
 class _SupermemoryAdapter(_SubProviderAdapter):
     CONFIG_KEY = "supermemory"
-    MODULE     = "plugins.memory.supermemory"
-    CLASS      = "SupermemoryMemoryProvider"
-    PREFIX     = "supermemory"
+    MODULE = "plugins.memory.supermemory"
+    CLASS = "SupermemoryMemoryProvider"
+    PREFIX = "supermemory"

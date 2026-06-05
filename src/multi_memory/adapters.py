@@ -285,21 +285,32 @@ class _MnemosyneAdapter(_SubProviderAdapter):
     CLASS = "MemoryProvider"
     PREFIX = "mnemosyne"  # stdlib-backed, no extra pip deps
 
-    def __init__(self, **kwargs: Any):
-        # Mnemosyne is a user-installed plugin (~/.hermes/plugins/mnemosyne/),
-        # not a pip package — use the Hermes plugin loader to find it.
-        try:
-            from plugins.memory import load_memory_provider  # noqa: PLC0415
+    # Mnemosyne's install script creates the plugin directory as
+    # "hermes-mnemosyne" (not "mnemosyne"), so we search both names.
+    _DISCOVERY_NAMES = ("mnemosyne", "hermes-mnemosyne")
 
-            provider = load_memory_provider("mnemosyne")
-            if provider is None:
-                raise ImportError("[multi-memory] backend 'mnemosyne' not found via plugin loader")
+    def __init__(self, **kwargs: Any):
+        provider = self._load_via_discovery()
+        if provider is not None:
             self._delegate = provider
             self._cached_write_mode = None
             self._cached_accepts_messages = None
-        except ImportError:
+        else:
             # Fallback to standard import when running outside Hermes
             super().__init__(**kwargs)
+
+    @classmethod
+    def _load_via_discovery(cls) -> Any:
+        """Try Hermes plugin discovery for each known directory name."""
+        try:
+            from plugins.memory import load_memory_provider  # noqa: PLC0415
+        except ImportError:
+            return None
+        for name in cls._DISCOVERY_NAMES:
+            provider = load_memory_provider(name)
+            if provider is not None:
+                return provider
+        return None
 
     @property
     def name(self) -> str:

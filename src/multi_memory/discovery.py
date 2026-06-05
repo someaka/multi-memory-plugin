@@ -29,10 +29,19 @@ __all__ = ["discover_backends", "installed_backends"]
 
 
 def _is_mnemosyne_plugin_installed() -> bool:
-    """Check if the Mnemosyne user-installed plugin exists."""
+    """Check if the Mnemosyne user-installed plugin exists.
+
+    Mnemosyne's install script creates the plugin directory as
+    ``hermes-mnemosyne`` (matching the pip package name), so we
+    check both names.
+    """
     hermes_home = _get_hermes_home()
-    plugin_dir = Path(hermes_home) / "plugins" / "mnemosyne"
-    return plugin_dir.is_dir() and (plugin_dir / "__init__.py").exists()
+    plugins_dir = Path(hermes_home) / "plugins"
+    for name in ("mnemosyne", "hermes-mnemosyne"):
+        plugin_dir = plugins_dir / name
+        if plugin_dir.is_dir() and (plugin_dir / "__init__.py").exists():
+            return True
+    return False
 
 
 def discover_backends() -> list[dict[str, str | bool]]:

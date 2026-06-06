@@ -1007,7 +1007,6 @@ class TestRegisterFunction:
         ctx = mock.MagicMock()
         with (
             mock.patch("multi_memory.MultiMemoryProvider._load_config"),
-            mock.patch("multi_memory.MultiMemoryProvider._validate_namespaces"),
         ):
             register(ctx)
         ctx.register_memory_provider.assert_called_once()
@@ -1021,7 +1020,6 @@ class TestRegisterFunction:
         ctx = mock.MagicMock()
         with (
             mock.patch("multi_memory.MultiMemoryProvider._load_config"),
-            mock.patch("multi_memory.MultiMemoryProvider._validate_namespaces"),
         ):
             register(ctx)
         ctx.register_cli_command.assert_called_once()
@@ -1038,7 +1036,6 @@ class TestRegisterFunction:
         ctx = mock.MagicMock(spec=["register_memory_provider"])
         with (
             mock.patch("multi_memory.MultiMemoryProvider._load_config"),
-            mock.patch("multi_memory.MultiMemoryProvider._validate_namespaces"),
         ):
             register(ctx)
         ctx.register_memory_provider.assert_called_once()
@@ -1090,7 +1087,6 @@ class TestNamePropertyConsistency:
     def test_instance_property_is_multi(self):
         with (
             mock.patch.object(MultiMemoryProvider, "_load_config"),
-            mock.patch.object(MultiMemoryProvider, "_validate_namespaces"),
         ):
             p = MultiMemoryProvider()
         assert p.name == "multi"
@@ -1102,7 +1098,6 @@ class TestNamePropertyConsistency:
         # Instance always returns "multi"
         with (
             mock.patch.object(MultiMemoryProvider, "_load_config"),
-            mock.patch.object(MultiMemoryProvider, "_validate_namespaces"),
         ):
             p = MultiMemoryProvider()
         assert p.name == "multi"
@@ -1429,7 +1424,6 @@ class TestThreadSafety:
 
         with (
             mock.patch.object(MultiMemoryProvider, "_load_config"),
-            mock.patch.object(MultiMemoryProvider, "_validate_namespaces"),
         ):
             prov = MultiMemoryProvider()
         assert isinstance(prov._lock, type(threading.RLock()))
@@ -1440,7 +1434,6 @@ class TestThreadSafety:
 
         with (
             mock.patch.object(MultiMemoryProvider, "_load_config"),
-            mock.patch.object(MultiMemoryProvider, "_validate_namespaces"),
         ):
             prov = MultiMemoryProvider()
 
@@ -1472,7 +1465,6 @@ class TestThreadSafety:
         """handle_tool_call takes a snapshot under lock, dispatches outside."""
         with (
             mock.patch.object(MultiMemoryProvider, "_load_config"),
-            mock.patch.object(MultiMemoryProvider, "_validate_namespaces"),
         ):
             prov = MultiMemoryProvider()
 
@@ -1493,7 +1485,6 @@ class TestSchemaFailureProtection:
         """A sub-adapter that raises from get_tool_schemas is skipped."""
         with (
             mock.patch.object(MultiMemoryProvider, "_load_config"),
-            mock.patch.object(MultiMemoryProvider, "_validate_namespaces"),
         ):
             prov = MultiMemoryProvider()
 
@@ -1515,7 +1506,6 @@ class TestSchemaFailureProtection:
         """If all sub-adapters fail, returns empty list (not an exception)."""
         with (
             mock.patch.object(MultiMemoryProvider, "_load_config"),
-            mock.patch.object(MultiMemoryProvider, "_validate_namespaces"),
         ):
             prov = MultiMemoryProvider()
 
@@ -1531,7 +1521,6 @@ class TestSchemaFailureProtection:
         """A failing sub-adapter's health is recorded as a failure."""
         with (
             mock.patch.object(MultiMemoryProvider, "_load_config"),
-            mock.patch.object(MultiMemoryProvider, "_validate_namespaces"),
         ):
             prov = MultiMemoryProvider()
 
@@ -1588,7 +1577,6 @@ class TestCloseMethod:
         """MultiMemoryProvider.shutdown() prefers close() over shutdown()."""
         with (
             mock.patch.object(MultiMemoryProvider, "_load_config"),
-            mock.patch.object(MultiMemoryProvider, "_validate_namespaces"),
         ):
             prov = MultiMemoryProvider()
 

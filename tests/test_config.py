@@ -157,3 +157,71 @@ class TestGetEnabledBackends:
         cfg = {"multi": {"backends": {"a": False, "b": 0, "c": None}}}
         result = get_enabled_backends(cfg)
         assert result == []
+
+class TestLoadMultiConfigErrors:
+    """Error paths in load_multi_config."""
+
+    def test_permission_error(self, tmp_path):
+        import stat
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("memory:\n  provider: multi\n")
+        config_file.chmod(0o000)
+        with mock.patch("multi_memory.config._get_config_path", return_value=str(config_file)):
+            result = load_multi_config()
+        assert result == {}
+        config_file.chmod(0o644)
+
+    def test_is_a_directory(self, tmp_path):
+        with mock.patch("multi_memory.config._get_config_path", return_value=str(tmp_path)):
+            result = load_multi_config()
+        assert result == {}
+
+    def test_invalid_yaml(self, tmp_path):
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(":invalid: yaml: [")
+        with mock.patch("multi_memory.config._get_config_path", return_value=str(config_file)):
+            result = load_multi_config()
+        assert result == {}
+
+    def test_config_not_a_dict(self, tmp_path):
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("[1, 2, 3]")
+        with mock.patch("multi_memory.config._get_config_path", return_value=str(config_file)):
+            result = load_multi_config()
+        assert result == {}
+
+    def test_memory_not_a_dict(self, tmp_path):
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("memory: [1, 2, 3]")
+        with mock.patch("multi_memory.config._get_config_path", return_value=str(config_file)):
+            result = load_multi_config()
+        assert result == {}
+
+
+class TestGetEnabledBackendsEdgeCases:
+    """Edge cases for get_enabled_backends."""
+
+    def test_config_none_calls_loader(self):
+        with mock.patch("multi_memory.config.load_multi_config", return_value={"multi": {"backends": {"x": {}}}}):
+            result = get_enabled_backends(None)
+        assert result == ["x"]
+
+    def test_config_not_a_dict(self):
+        result = get_enabled_backends("not-a-dict")
+        assert result == []
+
+    def test_legacy_single_provider(self):
+        result = get_enabled_backends({"provider": "mnemosyne"})
+        assert result == ["mnemosyne"]
+
+    def test_single_provider_multi_returns_empty(self):
+        result = get_enabled_backends({"provider": "multi"})
+        assert result == []
+
+    def test_providers_list_fallback(self):
+        result = get_enabled_backends({"providers": ["a", "b"]})
+        assert result == ["a", "b"]
+
+    def test_providers_list_ignores_empty_string(self):
+        result = get_enabled_backends({"providers": ["a", "", "b"]})
+        assert result == ["a", "b"]

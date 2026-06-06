@@ -200,3 +200,12 @@ class TestNamespaceValidator:
     def test_static_method_whitespace(self):
         result = NamespaceValidator.validate_prefix("  ", name="whitespace")
         assert result is not None
+
+    def test_duplicate_count_suppressed(self, caplog):
+        """Same count twice doesn't log a second warning."""
+        tbw = ToolBudgetWarning(threshold=2)
+        schemas = [{"name": f"tool_{i}"} for i in range(5)]
+        with caplog.at_level(logging.WARNING, logger="multi_memory.budget"):
+            tbw.check(schemas)
+            tbw.check(schemas)
+        assert len(caplog.records) == 1

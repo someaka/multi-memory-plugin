@@ -280,11 +280,6 @@ class MultiMemoryProvider(MemoryProvider):
         except Exception as exc:
             logger.warning("[multi-memory] config load failed: %s", exc)
 
-    def _validate_namespaces(self) -> None:
-        """Check all adapter PREFIX values are non-empty."""
-        validator = NamespaceValidator(list(_SUB_CLASSES))
-        validator.validate_all()
-
     # ─── Snapshot helper ───────────────────────────────────────────────────
 
     def _snapshot(self) -> list[_SubProviderAdapter]:

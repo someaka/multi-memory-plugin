@@ -300,3 +300,109 @@ class TestCmdRemove:
         # Provider stays as 'multi' — empty multiplexer is valid, and
         # switching to 'default' makes `hermes multi add` disappear.
         assert saved["memory"]["provider"] == "multi"
+
+class TestMultiCommandDispatch:
+    """multi_command dispatches correctly to each subcommand."""
+
+    def test_dispatch_status(self, capsys):
+        args = argparse.Namespace(multi_command="status", json_output=False)
+        with mock.patch("multi_memory.cli.load_config", return_value={"memory": {}}):
+            multi_command(args)
+        out = capsys.readouterr().out
+        assert "Multi-Memory Provider" in out
+
+    def test_dispatch_list(self, capsys):
+        args = argparse.Namespace(multi_command="list", json_output=False)
+        with mock.patch("multi_memory.cli.load_config", return_value={"memory": {}}):
+            multi_command(args)
+        out = capsys.readouterr().out
+        assert "Available memory backends" in out
+
+    def test_dispatch_add(self, capsys):
+        args = argparse.Namespace(multi_command="add", backend="mnemosyne")
+        with mock.patch("multi_memory.cli.load_config", return_value={}):
+            with mock.patch("multi_memory.cli.save_config"):
+                multi_command(args)
+        out = capsys.readouterr().out
+        assert "Added" in out
+
+    def test_dispatch_remove(self, capsys):
+        args = argparse.Namespace(multi_command="remove", backend="mnemosyne")
+        config = {"memory": {"multi": {"backends": {"mnemosyne": {}}}}}
+        with mock.patch("multi_memory.cli.load_config", return_value=config):
+            with mock.patch("multi_memory.cli.save_config"):
+                multi_command(args)
+        out = capsys.readouterr().out
+        assert "Removed" in out
+
+    def test_no_subcommand_shows_usage(self, capsys):
+        args = argparse.Namespace(multi_command=None)
+        multi_command(args)
+        out = capsys.readouterr().out
+        assert "Usage:" in out
+
+
+class TestCmdStatusEdgeCases:
+    """Coverage for status display edge cases."""
+
+    def test_status_json(self, capsys):
+        config = {"memory": {"multi": {"backends": {"mnemosyne": {}}}}}
+        args = argparse.Namespace(json_output=True)
+        with mock.patch("multi_memory.cli.load_config", return_value=config):
+            _cmd_status(args)
+        out = capsys.readouterr().out
+        import json
+        data = json.loads(out)
+        assert data["active_backends"] == ["mnemosyne"]
+
+    def test_status_backend_installed(self, capsys):
+        config = {"memory": {"multi": {"backends": {"holographic": {}}}}}
+        args = argparse.Namespace(json_output=False)
+        with mock.patch("multi_memory.cli.load_config", return_value=config):
+            _cmd_status(args)
+        out = capsys.readouterr().out
+        assert "holographic" in out
+
+    def test_status_no_memory_config(self, capsys):
+        args = argparse.Namespace(json_output=False)
+        with mock.patch("multi_memory.cli.load_config", return_value={}):
+            _cmd_status(args)
+        out = capsys.readouterr().out
+        assert "0 active backend" in out
+
+    def test_remove_empty_memory_config(self, capsys):
+        args = argparse.Namespace(backend="mnemosyne")
+        with mock.patch("multi_memory.cli.load_config", return_value={}):
+            _cmd_remove(args)
+        out = capsys.readouterr().out
+        assert "No memory config found" in out
+
+    def test_status_discovery_exception_silent(self, capsys):
+        """status handles discovery exception gracefully."""
+        config = {"memory": {"multi": {"backends": {"mnemosyne": {}}}}}
+        args = argparse.Namespace(json_output=False)
+        with mock.patch("multi_memory.cli.load_config", return_value=config):
+            with mock.patch("multi_memory.discovery.discover_backends", side_effect=RuntimeError("boom")):
+                _cmd_status(args)
+        out = capsys.readouterr().out
+        assert "Multi-Memory Provider" in out
+
+    def test_status_reports_only_active_backend(self, capsys):
+        config = {"memory": {"multi": {"backends": {"holographic": {}}}}}
+        args = argparse.Namespace(json_output=False)
+        with mock.patch("multi_memory.cli.load_config", return_value=config):
+            _cmd_status(args)
+        out = capsys.readouterr().out
+        assert "holographic" in out
+        assert "mnemosyne" not in out
+
+    def test_remove_no_remaining_with_providers(self, capsys):
+        """remove backend with providers list remaining shows correct message."""
+        config = {"memory": {"providers": ["holographic"], "multi": {"backends": {"mnemosyne": {}}}}}
+        args = argparse.Namespace(backend="mnemosyne")
+        saved = {}
+        with mock.patch("multi_memory.cli.load_config", return_value=config):
+            with mock.patch("multi_memory.cli.save_config", side_effect=saved.update):
+                _cmd_remove(args)
+        out = capsys.readouterr().out
+        assert "Removed" in out

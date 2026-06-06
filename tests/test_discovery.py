@@ -219,3 +219,35 @@ class TestInstalledBackends:
         ):
             result = installed_backends()
         assert result == ["a", "c"]
+
+class TestIsMnemosynePluginInstalled:
+    """_is_mnemosyne_plugin_installed() detects the plugin directory."""
+
+    def test_hermes_mnemosyne_name_detected(self, tmp_path, monkeypatch):
+        plugins_dir = tmp_path / "plugins" / "hermes-mnemosyne"
+        plugins_dir.mkdir(parents=True)
+        (plugins_dir / "__init__.py").write_text("")
+        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        assert _is_mnemosyne_plugin_installed() is True
+
+    def test_mnemosyne_name_detected(self, tmp_path, monkeypatch):
+        plugins_dir = tmp_path / "plugins" / "mnemosyne"
+        plugins_dir.mkdir(parents=True)
+        (plugins_dir / "__init__.py").write_text("")
+        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        assert _is_mnemosyne_plugin_installed() is True
+
+    def test_not_installed_when_missing(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        assert _is_mnemosyne_plugin_installed() is False
+
+    def test_directory_but_no_init(self, tmp_path, monkeypatch):
+        plugins_dir = tmp_path / "plugins" / "mnemosyne"
+        plugins_dir.mkdir(parents=True)
+        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        assert _is_mnemosyne_plugin_installed() is False
+
+    def test_find_spec_module_not_found_handled(self):
+        with mock.patch("multi_memory.discovery.find_spec", side_effect=ModuleNotFoundError):
+            results = discover_backends()
+        assert len(results) == 9

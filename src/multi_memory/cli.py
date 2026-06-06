@@ -163,7 +163,7 @@ def _get_available_backends() -> list[tuple[str, str, Any]]:
         return results
 
     results = []
-    for name, desc, available in raw:
+    for name, _desc, _available in raw:
         try:
             provider = load_memory_provider(name)
             if not provider:
@@ -198,7 +198,7 @@ def _find_provider_dir(provider_name: str) -> Path | None:
         return None
 
 
-def _install_dependencies(provider_name: str) -> None:
+def _install_dependencies(provider_name: str) -> None:  # noqa: PLR0912,PLR0915
     """Install pip dependencies declared in the provider's plugin.yaml."""
     import shutil
 
@@ -220,7 +220,7 @@ def _install_dependencies(provider_name: str) -> None:
     if not pip_deps:
         return
 
-    _IMPORT_NAMES = {
+    import_names = {
         "honcho-ai": "honcho",
         "mem0ai": "mem0",
         "hindsight-client": "hindsight_client",
@@ -229,7 +229,7 @@ def _install_dependencies(provider_name: str) -> None:
 
     missing = []
     for dep in pip_deps:
-        import_name = _IMPORT_NAMES.get(dep, dep.replace("-", "_").split("[")[0])
+        import_name = import_names.get(dep, dep.replace("-", "_").split("[")[0])
         try:
             __import__(import_name)
         except ImportError:
@@ -247,11 +247,11 @@ def _install_dependencies(provider_name: str) -> None:
     else:
         pip_cmd = shutil.which("pip3") or shutil.which("pip")
         if not pip_cmd:
-            print(f"  ⚠ uv not found — cannot install dependencies")
-            print(f"  Install uv: curl -LsSf https://astral.sh/uv/install.sh | sh")
-            print(f"  Then re-run: hermes multi setup")
+            print("  ⚠ uv not found — cannot install dependencies")
+            print("  Install uv: curl -LsSf https://astral.sh/uv/install.sh | sh")
+            print("  Then re-run: hermes multi setup")
             return
-        print(f"  ⚠ uv not found. Falling back to standard pip...")
+        print("  ⚠ uv not found. Falling back to standard pip...")
         install_cmd = [sys.executable, "-m", "pip", "install", "--quiet"] + missing
         manual_cmd = f"{sys.executable} -m pip install {' '.join(missing)}"
 
@@ -373,7 +373,7 @@ def _curses_checklist(title: str, items: list[str],
 
 # ── Interactive setup wizard ───────────────────────────────────────────────
 
-def _cmd_setup_wizard(args: argparse.Namespace) -> None:
+def _cmd_setup_wizard(args: argparse.Namespace) -> None:  # noqa: PLR0912,PLR0915
     """Interactive curses-based memory backend setup wizard."""
     backends = _get_available_backends()
 
@@ -388,7 +388,7 @@ def _cmd_setup_wizard(args: argparse.Namespace) -> None:
     active = _get_active_backends(memory_cfg)
     if active:
         print(f"\n  Currently active: {', '.join(active)}")
-        print(f"  You can add more backends or change your selection.\n")
+        print("  You can add more backends or change your selection.\n")
 
     # Build picker items
     items: list[tuple[str, str]] = []
@@ -487,14 +487,13 @@ def _cmd_setup_backend(backend_name: str) -> None:
 
     name, _, provider = match
     config = load_config()
-    memory_cfg = config.setdefault("memory", {})
-    active = _get_active_backends(memory_cfg)
+    config.setdefault("memory", {})
 
     _do_backend_setup(name, provider)
     # Config already saved by _do_backend_setup
 
 
-def _do_backend_setup(name: str, provider: Any) -> None:
+def _do_backend_setup(name: str, provider: Any) -> None:  # noqa: PLR0912,PLR0915
     """Run the full setup flow for a single backend."""
     _install_dependencies(name)
 
@@ -533,7 +532,11 @@ def _do_backend_setup(name: str, provider: Any) -> None:
         return
 
     # Generic schema-based setup
-    schema = provider.get_config_schema() if provider and hasattr(provider, "get_config_schema") else []
+    schema = (
+        provider.get_config_schema()
+        if provider and hasattr(provider, "get_config_schema")
+        else []
+    )
 
     provider_config: dict = memory_cfg.get(name, {})
     if not isinstance(provider_config, dict):
@@ -562,9 +565,12 @@ def _do_backend_setup(name: str, provider: Any) -> None:
             url = field.get("url")
 
             when = field.get("when")
-            if when and isinstance(when, dict):
-                if not all(provider_config.get(k) == v for k, v in when.items()):
-                    continue
+            if (
+                when
+                and isinstance(when, dict)
+                and not all(provider_config.get(k) == v for k, v in when.items())
+            ):
+                continue
 
             if choices and not is_secret:
                 choice_items = [(c, "") for c in choices]
@@ -577,7 +583,7 @@ def _do_backend_setup(name: str, provider: Any) -> None:
             elif is_secret:
                 existing = os.environ.get(env_var, "") if env_var else ""
                 if existing:
-                    masked = f"...{existing[-4:]}" if len(existing) > 4 else "set"
+                    masked = f"...{existing[-4:]}" if len(existing) > 4 else "set"  # noqa: PLR2004
                     val = _prompt(f"{desc} (current: {masked}, blank to keep)", secret=True)
                 else:
                     if url:
@@ -619,12 +625,12 @@ def _do_backend_setup(name: str, provider: Any) -> None:
 
     print(f"\n  Backend: {name}")
     print(f"  Active backends: {', '.join(active)}")
-    print(f"  Saved to config.yaml")
+    print("  Saved to config.yaml")
     if provider_config:
-        print(f"  Backend config saved")
+        print("  Backend config saved")
     if env_writes:
-        print(f"  API keys saved to .env")
-    print(f"\n  Restart Hermes to activate.\n")
+        print("  API keys saved to .env")
+    print("\n  Restart Hermes to activate.\n")
 
     save_config(config)
 
@@ -677,7 +683,7 @@ def _remove_backend_from_config(name: str, memory_cfg: dict) -> None:
 
 # ── Status ─────────────────────────────────────────────────────────────────
 
-def _cmd_status(args: argparse.Namespace) -> None:
+def _cmd_status(args: argparse.Namespace) -> None:  # noqa: PLR0912,PLR0915
     """Show active backends and their health/config."""
     config = load_config()
     memory_cfg = config.get("memory", {})
@@ -689,20 +695,23 @@ def _cmd_status(args: argparse.Namespace) -> None:
         print(json.dumps({
             "provider": top_provider or "built-in",
             "active_backends": active,
-            "config_format": "backends" if memory_cfg.get("multi", {}).get("backends") else "providers",
+            "config_format": (
+                "backends" if memory_cfg.get("multi", {}).get("backends")
+                else "providers"
+            ),
         }, indent=2))
         return
 
-    print(f"\n  Memory status")
+    print("\n  Memory status")
     print("  " + "─" * 40)
-    print(f"  Built-in:     always active")
+    print("  Built-in:     always active")
 
     if top_provider:
         print(f"  Provider:     {top_provider}")
     elif active:
         print(f"  Providers:    {', '.join(active)}")
     else:
-        print(f"  Provider:     (none — built-in only)")
+        print("  Provider:     (none — built-in only)")
 
     # Show top-level provider config if it has sub-config
     if top_provider and top_provider not in active:
@@ -734,7 +743,7 @@ def _cmd_status(args: argparse.Namespace) -> None:
             print(f"\n    ── {backend_name} ──")
             backend_cfg = memory_cfg.get(backend_name, {})
             if isinstance(backend_cfg, dict) and backend_cfg:
-                print(f"    Config:")
+                print("    Config:")
                 for key, val in backend_cfg.items():
                     if isinstance(val, dict) and val:
                         items = ", ".join(
@@ -750,17 +759,21 @@ def _cmd_status(args: argparse.Namespace) -> None:
             backends_list = _get_available_backends()
             found = any(n == backend_name for n, _, _ in backends_list)
             if found:
-                print(f"    Plugin:       installed ✓")
+                print("    Plugin:       installed ✓")
                 for bname, _, bprov in backends_list:
                     if bname == backend_name and bprov:
                         if bprov.is_available():
-                            print(f"    Status:       available ✓")
+                            print("    Status:       available ✓")
                         else:
-                            print(f"    Status:       not available ✗")
-                            schema = bprov.get_config_schema() if hasattr(bprov, "get_config_schema") else []
+                            print("    Status:       not available ✗")
+                            schema = (
+                                bprov.get_config_schema()
+                                if hasattr(bprov, "get_config_schema")
+                                else []
+                            )
                             required = [f for f in schema if f.get("env_var")]
                             if required:
-                                print(f"    Missing env vars:")
+                                print("    Missing env vars:")
                                 for f in required:
                                     ev = f.get("env_var", "")
                                     url = f.get("url", "")
@@ -772,13 +785,13 @@ def _cmd_status(args: argparse.Namespace) -> None:
                                     print(line)
                         break
             else:
-                print(f"    Plugin:       NOT installed ✗")
+                print("    Plugin:       NOT installed ✗")
                 print(f"    Install the '{backend_name}' plugin to ~/.hermes/plugins/")
 
     # List installed plugins
     backends_list = _get_available_backends()
     if backends_list:
-        print(f"\n  Installed plugins:")
+        print("\n  Installed plugins:")
         for bname, hint, _ in backends_list:
             marker = " ← active" if bname in active else ""
             print(f"    • {bname}  ({hint}){marker}")

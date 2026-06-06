@@ -375,8 +375,8 @@ class TestCmdStatusEdgeCases:
         assert "holographic" in out
         # Should show holographic as active, not mnemosyne
         assert " ← active" in out
-        active_lines = [l for l in out.split("\n") if " ← active" in l]
-        assert any("holographic" in l for l in active_lines)
+        active_lines = [line for line in out.split("\n") if " ← active" in line]
+        assert any("holographic" in line for line in active_lines)
 
     def test_remove_no_remaining_with_providers(self, capsys):
         """remove backend with providers list remaining shows correct message."""

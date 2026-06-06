@@ -593,9 +593,7 @@ class MultiMemoryProvider(MemoryProvider):
 # ── Helpers ────────────────────────────────────────────────────────────────
 
 
-def _close_or_shutdown(
-    sub: _SubProviderAdapter, name: str, timeout: float = 10.0
-) -> None:
+def _close_or_shutdown(sub: _SubProviderAdapter, name: str, timeout: float = 10.0) -> None:
     """Close or shutdown a sub-provider, preferring close().
 
     Runs in a separate thread with a *timeout* (default 10s) to prevent

@@ -181,7 +181,8 @@ def register(ctx) -> None:
     Gracefully degrades on older Hermes versions that lack
     ``register_cli_command`` on the PluginContext.
     """
-    ctx.register_memory_provider(MultiMemoryProvider())
+    if hasattr(ctx, "register_memory_provider"):
+        ctx.register_memory_provider(MultiMemoryProvider())
 
     if hasattr(ctx, "register_cli_command"):
         from .cli import multi_command, register_cli  # noqa: PLC0415

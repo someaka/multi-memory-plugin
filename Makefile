@@ -8,19 +8,30 @@ SHELL := /usr/bin/env bash
 PACKAGE := multi_memory
 
 install:
-	pip install -e ".[all]"
+	uv sync --extra test
+
+PYTHON ?= python3
+HERMES_AGENT ?= $(HOME)/.hermes/hermes-agent
+PYTEST_ARGS ?= -v
+
+# Auto-detect hermes-agent path for PYTHONPATH (needed by bundled memory
+# plugins like holographic).  Falls back to ~/.hermes/hermes-agent.
+HERMES_PATH := $(shell \
+  if [ -d "$(HERMES_AGENT)" ]; then echo "$(HERMES_AGENT)"; \
+  elif [ -d "/tmp/hermes-agent" ]; then echo "/tmp/hermes-agent"; \
+  else echo ""; fi)
 
 test:
-	python -m pytest tests/ -v
+	PYTHONPATH="$(HERMES_PATH):src" uv run pytest tests/ $(PYTEST_ARGS)
 
 lint: ruff
-	python -m flake8 src/$(PACKAGE)/ tests/
+	$(PYTHON) -m flake8 src/$(PACKAGE)/ tests/
 
 ruff:
-	ruff check src/ tests/
+	$(PYTHON) -m ruff check src/ tests/
 
 coverage:
-	python -m pytest tests/ --cov=src/$(PACKAGE)/ --cov-report=term-missing
+	PYTHONPATH="$(HERMES_PATH):src" $(PYTHON) -m pytest tests/ --cov=src/$(PACKAGE)/ --cov-report=term-missing
 
 clean:
 	rm -rf .coverage .pytest_cache/ htmlcov/ *.egg-info/ __pycache__/

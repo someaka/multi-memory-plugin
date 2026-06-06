@@ -7,22 +7,34 @@ hermes plugins install someaka/multi-memory-plugin
 hermes config set memory.provider multi
 ```
 
-Add backends:
+Then add backends — **interactively** (recommended):
 
 ```bash
-hermes config set memory.multi.backends.holographic true
-hermes config set memory.multi.backends.mnemosyne true
+hermes multi setup
 ```
 
-After restart, use `hermes multi add <name>` for a cleaner workflow.
+Or **quick-add** individual backends:
 
-Restart Hermes for the new provider to take effect.
+```bash
+hermes multi add holographic
+hermes multi add mnemosyne
+```
+
+The setup wizard handles API keys, model choices, endpoint URLs, and
+auto-installs Python dependencies. Restart Hermes for changes to take effect.
+
+Need to remove a backend?
+
+```bash
+hermes multi remove holographic
+```
 
 ---
 
 ## Configuration Formats
 
-Two formats are supported. Both are equivalent — choose the one you prefer.
+Two formats are supported under the hood. Both are equivalent — the CLI
+writes both simultaneously so you don't need to care which one.
 
 ### Format 1: `multi.backends` (per-backend options)
 
@@ -196,7 +208,7 @@ Tools: `supermemory_store`, `supermemory_search`, `supermemory_forget`, `superme
 
 ## Enabling / Disabling Backends
 
-Backends can be enabled or disabled per config by toggling their value:
+Backends can be enabled or disabled by toggling their value in config:
 
 ```yaml
 memory:
@@ -206,6 +218,13 @@ memory:
       mem0: false             # disabled (explicit false)
       holographic: true       # enabled
       honcho: "false"         # disabled (string form also accepted)
+```
+
+Or use the CLI — it's the same result:
+
+```bash
+hermes multi add mnemosyne       # enables
+hermes multi remove mem0         # disables
 ```
 
 A backend is treated as disabled if its value is one of:
@@ -232,6 +251,9 @@ cd multi-memory-plugin
 ln -sf "$(pwd)" ~/.hermes/plugins/multi
 hermes config set memory.provider multi
 
+# Add backends via CLI
+hermes multi add mnemosyne
+
 # Test
 uv sync --extra test
 uv run pytest tests/
@@ -245,11 +267,19 @@ ruff check src/ tests/
 ## Troubleshooting
 
 **Backend not loading?** Check the Hermes logs:
+
 ```bash
 tail -f ~/.hermes/logs/hermes.log | grep "multi-memory"
 ```
 
-**ImportError for a backend?** Install the missing package:
+**Missing Python package?** Run the setup wizard — it auto-installs dependencies:
+
+```bash
+hermes multi setup holographic
+```
+
+Or install manually:
+
 ```bash
 pip install mem0ai            # for Mem0
 pip install honcho-ai         # for Honcho
@@ -260,3 +290,11 @@ npm install -g byterover-cli  # for ByteRover
 ```
 
 Mnemosyne and Holographic are stdlib-only — no install needed.
+
+**API key not set?** Use the setup wizard to configure secrets interactively:
+
+```bash
+hermes multi setup mem0
+```
+
+This writes the key to `~/.hermes/.env` with restricted permissions (0600).

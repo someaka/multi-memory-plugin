@@ -13,30 +13,34 @@ A [Hermes](https://github.com/NousResearch/hermes-agent) memory provider that ru
 ```bash
 hermes plugins install someaka/multi-memory-plugin
 hermes config set memory.provider multi
-hermes config set memory.multi.backends.holographic true
-hermes config set memory.multi.backends.mnemosyne true
 ```
 
-Restart Hermes. After restart, manage backends with `hermes multi`:
+Then pick your backends with the interactive setup wizard:
+
+```bash
+hermes multi setup
+```
+
+Or add backends directly:
 
 ```bash
 hermes multi add holographic
-hermes multi status
+hermes multi add mnemosyne
 ```
 
-See **[CONFIG.md](CONFIG.md)** for all backends and advanced configuration.
+Restart Hermes. The provider auto-discovers installed backends.
 
 ---
 
 ## How it works
 
 Hermes only lets one memory provider be active. This plugin is that one
-provider — it delegates to as many backends as you list in config.
+provider — it delegates to as many backends as you list.
 
 Every Hermes memory backend works: Holographic, Mnemosyne, Mem0, Honcho,
 OpenViking, Hindsight, RetainDB, ByteRover, Supermemory, and any
 third-party backend dropped into `plugins/memory/<name>/`. The plugin
-auto-discovers them — no code changes needed, just add the name to config.
+auto-discovers them — no code changes needed, just add the name.
 
 When the model calls a memory tool (like `mnemosyne_recall` or
 `holographic_store`), the plugin routes it to the right backend by matching
@@ -56,17 +60,23 @@ cooldown doubles (up to 5 minutes).
 Available after restarting Hermes:
 
 ```bash
-hermes multi status          # active backends + health
-hermes multi list            # all backends, active markers
-hermes multi add <name>      # add a backend to config
-hermes multi remove <name>   # remove a backend from config
+hermes multi setup            # interactive curses-based setup wizard
+hermes multi setup <name>     # configure a specific backend interactively
+hermes multi status           # active backends + health + plugin status
+hermes multi list             # all backends, active markers
+hermes multi add <name>       # add a backend to config
+hermes multi remove <name>    # remove a backend from config
 ```
+
+The setup wizard walks through per-backend configuration (API keys, model
+choices, endpoint URLs) and auto-installs Python dependencies from each
+backend's `plugin.yaml`.
 
 ---
 
 ## Docs
 
-- **[CONFIG.md](CONFIG.md)** — install, config formats, per-backend reference
+- **[CONFIG.md](CONFIG.md)** — config formats, per-backend reference, troubleshooting
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** — setup, tests, adding backends, architecture
 - **[AGENT.md](AGENT.md)** — instructions for AI coding assistants
 - **[CHANGELOG.md](CHANGELOG.md)** — version history

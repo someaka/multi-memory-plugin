@@ -92,7 +92,7 @@ else
 fi
 
 # 4. Validate Python import
-if python3 -c "import sys; sys.path.insert(0, '$REPO_DIR/src'); from multi_memory import MultiMemoryProvider; print(f'OK: {MultiMemoryProvider.__new__(MultiMemoryProvider).name}')" 2>/dev/null; then
+if "$PYTHON" -c "import sys; sys.path.insert(0, '$REPO_DIR/src'); from multi_memory import MultiMemoryProvider" 2>/dev/null; then
     ok "Plugin imports successfully"
 else
     die "Plugin import failed — is the repo installed as a package?"

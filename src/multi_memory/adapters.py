@@ -259,7 +259,7 @@ class _GenericAdapter(_SubProviderAdapter):
     def __init__(self, provider: Any, name: str, **kwargs: Any):
         self._delegate = provider
         self._name = name
-        # Cache introspection results
+        # Cache introspection results — inherited from base class
         self._cached_write_mode: str | None = None
         self._cached_accepts_messages: bool | None = None
 

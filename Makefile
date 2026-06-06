@@ -31,7 +31,7 @@ ruff:
 	$(PYTHON) -m ruff check src/ tests/
 
 coverage:
-	PYTHONPATH="$(HERMES_PATH):src" $(PYTHON) -m pytest tests/ --cov=src/$(PACKAGE)/ --cov-report=term-missing
+	PYTHONPATH="$(HERMES_PATH):src" uv run pytest tests/ --cov=src/$(PACKAGE)/ --cov-report=term-missing
 
 clean:
 	rm -rf .coverage .pytest_cache/ htmlcov/ *.egg-info/ __pycache__/
@@ -40,6 +40,6 @@ clean:
 
 install-hook:
 	@echo "Installing pre-commit hook (ruff + pytest)..."
-	@printf '#!/usr/bin/env bash\nset -euo pipefail\necho "Running ruff..."\nruff check src/ tests/\necho "Running tests..."\npython -m pytest tests/ -q\n' > .git/hooks/pre-commit
+	@printf '#!/usr/bin/env bash\nset -euo pipefail\necho "Running ruff..."\nuv run ruff check src/ tests/\necho "Running tests..."\nuv run pytest tests/ -q\n' > .git/hooks/pre-commit
 	@chmod +x .git/hooks/pre-commit
 	@echo "OK"

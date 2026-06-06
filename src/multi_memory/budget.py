@@ -4,7 +4,7 @@ Usage
 -----
     from multi_memory.budget import ToolBudgetWarning
 
-    warning = ToolBudgetWarning(threshold=20)
+    warning = ToolBudgetWarning(threshold=40)
     schemas = provider.get_tool_schemas()
     warning.check(schemas)   # logs warning if len(schemas) > threshold
 """
@@ -30,7 +30,7 @@ class ToolBudgetWarning:
     Parameters
     ----------
     threshold : int
-        Schema count above which a warning is emitted (default 20).
+        Schema count above which a warning is emitted (default 40).
     """
 
     def __init__(self, threshold: int = DEFAULT_THRESHOLD) -> None:

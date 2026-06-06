@@ -302,10 +302,6 @@ def _cmd_remove(args: argparse.Namespace) -> None:
         providers_list.remove(backend)
         found = True
 
-    # Update legacy single-provider if it was this one
-    if memory_cfg.get("provider") == backend:
-        memory_cfg["provider"] = providers_list[0] if providers_list else ""
-
     if not found:
         print(f"\n  '{backend}' is not in the active config.\n")
         return

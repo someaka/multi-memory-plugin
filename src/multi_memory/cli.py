@@ -194,6 +194,11 @@ def _get_available_backends() -> list[tuple[str, str, Any]]:  # pragma: no cover
             logger.debug("[multi-memory] load_memory_provider('%s') failed: %s", name, exc)
             continue
 
+        # Normalize to the provider's declared name — handles cases where
+        # the plugin directory name differs from the provider's own name
+        # (e.g. hermes-mnemosyne/ → name == "mnemosyne").
+        canonical = getattr(provider, "name", name) or name
+
         schema = provider.get_config_schema() if hasattr(provider, "get_config_schema") else []
         has_secrets = any(f.get("secret") for f in schema)
         has_non_secrets = any(not f.get("secret") for f in schema)
@@ -206,7 +211,7 @@ def _get_available_backends() -> list[tuple[str, str, Any]]:  # pragma: no cover
         else:
             setup_hint = "local"
 
-        results.append((name, setup_hint, provider))
+        results.append((canonical, setup_hint, provider))
     return results
 
 
@@ -735,20 +740,6 @@ def _remove_backend_from_config(name: str, memory_cfg: dict) -> None:
 # ── Status ─────────────────────────────────────────────────────────────────
 
 
-def _name_matches(cache_name: str, config_name: str) -> bool:
-    """Match a cache entry name against a config backend name.
-
-    Mnemosyne's installer creates the plugin directory as
-    ``hermes-mnemosyne``, so the cache entry is keyed as
-    ``hermes-mnemosyne`` while the config uses ``mnemosyne``.
-    """
-    if cache_name == config_name:
-        return True
-    if config_name == "mnemosyne" and cache_name == "hermes-mnemosyne":
-        return True
-    return False
-
-
 def _cmd_status(args: argparse.Namespace) -> None:  # noqa: PLR0912,PLR0915
     """Show active backends and their health/config."""
     config = load_config()
@@ -825,11 +816,11 @@ def _cmd_status(args: argparse.Namespace) -> None:  # noqa: PLR0912,PLR0915
                     else:
                         print(f"      {key}: {val}")
 
-            found = any(_name_matches(n, backend_name) for n, _, _ in _backends_cache)
+            found = any(n == backend_name for n, _, _ in _backends_cache)
             if found:
                 print("    Plugin:       installed ✓")
                 for bname, _, bprov in _backends_cache:
-                    if _name_matches(bname, backend_name) and bprov:
+                    if bname == backend_name and bprov:
                         if bprov.is_available():
                             print("    Status:       available ✓")
                         else:

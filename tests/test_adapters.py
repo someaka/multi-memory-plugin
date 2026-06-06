@@ -1274,6 +1274,7 @@ class TestCoverageGaps:
         import sys
 
         mock_pm = mock.MagicMock()
+        mock_pm.discover_memory_providers.return_value = []
         mock_pm.load_memory_provider.return_value = None
         old = sys.modules.get("plugins.memory")
         sys.modules["plugins.memory"] = mock_pm
@@ -1297,6 +1298,7 @@ class TestCoverageGaps:
         mock_delegate.name = "mnemosyne"
         mock_cls = mock.MagicMock(return_value=mock_delegate)
         mock_pm = mock.MagicMock()
+        mock_pm.discover_memory_providers.return_value = []
         mock_pm.load_memory_provider.side_effect = ImportError("no plugins.memory")
         old = sys.modules.get("plugins.memory")
         sys.modules["plugins.memory"] = mock_pm
@@ -1320,6 +1322,7 @@ class TestCoverageGaps:
         mock_delegate = mock.MagicMock()
         mock_delegate.name = "mnemosyne"
         mock_pm = mock.MagicMock()
+        mock_pm.discover_memory_providers.return_value = [("mnemosyne", "", True)]
         mock_pm.load_memory_provider.return_value = mock_delegate
         old = sys.modules.get("plugins.memory")
         sys.modules["plugins.memory"] = mock_pm
@@ -1346,6 +1349,7 @@ class TestCoverageGaps:
             {"name": "mnemosyne_recall", "description": "Recall"},
         ]
         mock_pm = mock.MagicMock()
+        mock_pm.discover_memory_providers.return_value = [("mnemosyne", "", True)]
         mock_pm.load_memory_provider.return_value = mock_delegate
         old = sys.modules.get("plugins.memory")
         sys.modules["plugins.memory"] = mock_pm

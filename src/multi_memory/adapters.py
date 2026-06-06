@@ -286,24 +286,23 @@ class _MnemosyneAdapter(_SubProviderAdapter):
     PREFIX = "mnemosyne"
 
     def __init__(self, **kwargs: Any):
-        # Discover ALL installed providers, then match by declared name.
-        # This works regardless of the plugin's directory name.
+        # Import the Mnemosyne provider directly — load_memory_provider
+        # resolves the plugin from ~/.hermes/plugins/ by name.
+        # We do NOT call discover_memory_providers() because it enumerates
+        # ALL backends, including Honcho which can hang when missing config.
         provider = None
         try:
-            from plugins.memory import (  # noqa: PLC0415
-                discover_memory_providers,
-                load_memory_provider,
-            )
+            from plugins.memory import load_memory_provider  # noqa: PLC0415
         except ImportError:
             pass
         else:
-            for pname, _desc, _avail in discover_memory_providers():
+            # Try both possible plugin directory names
+            for dirname in ("mnemosyne", "hermes-mnemosyne"):
                 try:
-                    p = load_memory_provider(pname)
+                    provider = load_memory_provider(dirname)
                 except Exception:
                     continue
-                if p is not None and getattr(p, "name", pname) == self.CONFIG_KEY:
-                    provider = p
+                if provider is not None and getattr(provider, "name", dirname):
                     break
 
         if provider is not None:

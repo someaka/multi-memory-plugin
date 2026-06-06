@@ -736,3 +736,6 @@ def _try_generic_backend(name: str, backends: list[_SubProviderAdapter]) -> None
             name,
             exc,
         )
+_loading_config = False
+
+

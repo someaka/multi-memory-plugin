@@ -15,15 +15,23 @@ if _src not in sys.path:
     sys.path.insert(0, _src)
 
 
+_HERMES_AGENT_ROOT: str | None = None
+
+
 def _holographic_available() -> bool:
     """Check if the holographic backend is importable.
 
-    Checks the import first.  If PYTHONPATH is set to include the
-    hermes-agent source tree (via ``make test`` or CI), the import
-    succeeds directly.  Otherwise falls back to checking known
-    source locations on disk without modifying sys.path — runtime
-    path manipulation inside test collection is too slow.
+    First tries a direct import. If the module isn't importable but
+    the source files are found on disk, adds the hermes-agent source
+    root to sys.path so subsequent imports succeed.
+
+    Hermes plugins (holographic, mem0, etc.) live under
+    ``plugins/memory/<name>/`` in the hermes-agent source tree, so
+    the source root needs to be on sys.path for ``find_spec`` to
+    resolve ``plugins.memory.holographic``.
     """
+    global _HERMES_AGENT_ROOT
+
     try:
         if find_spec("plugins.memory.holographic") is not None:
             return True
@@ -36,8 +44,43 @@ def _holographic_available() -> bool:
     ):
         p = os.path.join(candidate, "plugins", "memory", "holographic", "__init__.py")
         if os.path.isfile(p):
+            # Found the source — add it to sys.path so imports work
+            if candidate not in sys.path:
+                sys.path.insert(0, candidate)
+                _HERMES_AGENT_ROOT = candidate
             return True
     return False
+
+
+def _ensure_hermes_agent_on_path() -> None:
+    """Ensure the hermes-agent source root is on sys.path for all tests.
+
+    Called during pytest_configure so every test has access to the
+    bundled memory providers (holographic, mem0, ...) without
+    needing PYTHONPATH in the environment.
+
+    Uses the same discovery logic as _holographic_available() for
+    consistency.
+    """
+    global _HERMES_AGENT_ROOT
+    if _HERMES_AGENT_ROOT is not None:
+        return
+
+    for candidate in (
+        os.path.expanduser("~/.hermes/hermes-agent"),
+        "/tmp/hermes-agent",
+    ):
+        p = os.path.join(candidate, "plugins", "memory", "holographic", "__init__.py")
+        if os.path.isfile(p):
+            if candidate not in sys.path:
+                sys.path.insert(0, candidate)
+                _HERMES_AGENT_ROOT = candidate
+            return
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    """Add hermes-agent source to sys.path before test collection."""
+    _ensure_hermes_agent_on_path()
 
 
 requires_holographic = pytest.mark.skipif(

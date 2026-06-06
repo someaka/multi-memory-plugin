@@ -18,9 +18,41 @@ from multi_memory.cli import (
     register_cli,
 )
 
+# ── Helpers ────────────────────────────────────────────────────────────────
+
+# Stub backend list for tests that exercise display logic without
+# triggering the real Hermes plugin discovery system (which can hang on
+# backends like Honcho that spin-loop on missing config).
+_STUB_BACKENDS = [
+    ("mnemosyne", "local", None),
+    ("mem0", "API key / local", None),
+    ("holographic", "local", None),
+    ("honcho", "API key / local", None),
+    ("openviking", "API key / local", None),
+    ("hindsight", "API key / local", None),
+    ("retaindb", "API key / local", None),
+    ("byterover", "requires API key", None),
+    ("supermemory", "requires API key", None),
+]
+
+
+@pytest.fixture(autouse=True)
+def _mock_backend_discovery(monkeypatch):
+    """Prevent tests from triggering the real Hermes plugin discovery.
+
+    The real ``plugins.memory.discover_memory_providers()`` can hang
+    indefinitely on backends like Honcho that spin-loop when config
+    is missing.  Unit tests for display/formatter logic should use a
+    controlled stub list instead.
+    """
+    monkeypatch.setattr(
+        "multi_memory.cli._get_available_backends",
+        lambda: _STUB_BACKENDS,
+    )
+
 
 @pytest.fixture()
-def parser():
+def parser() -> argparse.ArgumentParser:
     """Build a minimal argparse setup matching Hermes CLI."""
     p = argparse.ArgumentParser()
     sub = p.add_subparsers(dest="command")

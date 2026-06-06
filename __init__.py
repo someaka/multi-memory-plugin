@@ -7,9 +7,10 @@ Entry point for Hermes's memory-provider discovery which scans
 import sys
 from pathlib import Path
 
-# Ensure the plugin root is on sys.path so ``from src.multi_memory`` works
 _plugin_root = Path(__file__).resolve().parent
-if str(_plugin_root) not in sys.path:
-    sys.path.insert(0, str(_plugin_root))
+_src = _plugin_root / "src"
+for _p in (str(_plugin_root), str(_src)):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
-from src.multi_memory import MultiMemoryProvider, register  # noqa: E402, F401
+from multi_memory import MultiMemoryProvider, register  # noqa: E402, F401

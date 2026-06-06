@@ -285,15 +285,27 @@ class _MnemosyneAdapter(_SubProviderAdapter):
     CLASS = "MemoryProvider"
     PREFIX = "mnemosyne"
 
+    # Mnemosyne's install script creates the plugin directory as
+    # "hermes-mnemosyne", so try both names during discovery.
+    _NAMES = ("mnemosyne", "hermes-mnemosyne")
+
     def __init__(self, **kwargs: Any):
-        # Prefer Hermes plugin discovery — the provider is registered by
-        # its declared name, not its directory name.
+        # Prefer Hermes plugin discovery with fallback names.
         try:
             from plugins.memory import load_memory_provider  # noqa: PLC0415
+        except ImportError:
+            load_memory_provider = None
 
-            provider = load_memory_provider(self.CONFIG_KEY)
-        except (ImportError, Exception):
-            provider = None
+        provider = None
+        if load_memory_provider is not None:
+            for name in self._NAMES:
+                try:
+                    provider = load_memory_provider(name)
+                    if provider is not None:
+                        break
+                except Exception:
+                    continue
+
         if provider is not None:
             self._delegate = provider
             self._cached_write_mode = None

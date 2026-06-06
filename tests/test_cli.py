@@ -384,20 +384,197 @@ class TestCmdStatusEdgeCases:
         active_lines = [line for line in out.split("\n") if " ← active" in line]
         assert any("holographic" in line for line in active_lines)
 
-    def test_remove_no_remaining_with_providers(self, capsys):
-        """remove backend with providers list remaining shows correct message."""
-        config = {
-            "memory": {
-                "providers": ["holographic"],
-                "multi": {"backends": {"mnemosyne": {}}},
-            }
+
+# ── Config helpers ──────────────────────────────────────────────────────
+
+class TestConfigHelpers:
+    def test_set_active_backends_writes_both_formats(self):
+        """_set_active_backends writes providers list and multi.backends dict."""
+        from multi_memory.cli import _set_active_backends
+
+        memory_cfg: dict = {}
+        _set_active_backends(memory_cfg, ["mnemosyne", "holographic"])
+        assert memory_cfg["provider"] == "mnemosyne"
+        assert memory_cfg["providers"] == ["mnemosyne", "holographic"]
+        assert "mnemosyne" in memory_cfg["multi"]["backends"]
+        assert "holographic" in memory_cfg["multi"]["backends"]
+
+    def test_set_active_backends_empty_clears(self):
+        """_set_active_backends with empty list clears all."""
+        from multi_memory.cli import _set_active_backends
+
+        memory_cfg = {
+            "provider": "mnemosyne",
+            "providers": ["mnemosyne"],
+            "multi": {"backends": {"mnemosyne": {}}},
         }
-        args = argparse.Namespace(backend="mnemosyne")
-        saved = {}
-        with (
-            mock.patch("multi_memory.cli.load_config", return_value=config),
-            mock.patch("multi_memory.cli.save_config", side_effect=saved.update),
-        ):
-            _cmd_remove(args)
+        _set_active_backends(memory_cfg, [])
+        assert memory_cfg["provider"] == ""
+        assert memory_cfg["providers"] == []
+
+    def test_remove_backend_from_config_both_formats(self):
+        """_remove_backend_from_config removes from both formats."""
+        from multi_memory.cli import _remove_backend_from_config
+
+        memory_cfg = {
+            "provider": "honcho",
+            "providers": ["honcho", "mem0"],
+            "multi": {"backends": {"honcho": {}, "mem0": {}}},
+        }
+        _remove_backend_from_config("mem0", memory_cfg)
+        assert "mem0" not in memory_cfg["providers"]
+        assert "mem0" not in memory_cfg["multi"]["backends"]
+        assert "honcho" in memory_cfg["providers"]
+        assert memory_cfg["provider"] == "honcho"
+
+    def test_remove_backend_from_config_last_updates_provider(self):
+        """_remove_backend_from_config resets provider when last is removed."""
+        from multi_memory.cli import _remove_backend_from_config
+
+        memory_cfg = {
+            "provider": "honcho",
+            "providers": ["honcho"],
+            "multi": {"backends": {"honcho": {}}},
+        }
+        _remove_backend_from_config("honcho", memory_cfg)
+        assert memory_cfg["provider"] == ""
+
+    def test_get_active_backends_multi_format(self):
+        """_get_active_backends reads multi.backends dict."""
+        from multi_memory.cli import _get_active_backends
+
+        active = _get_active_backends({
+            "multi": {"backends": {"mnemosyne": {}, "holographic": {}}}
+        })
+        assert active == ["mnemosyne", "holographic"]
+
+    def test_get_active_backends_providers_format(self):
+        """_get_active_backends reads providers list."""
+        from multi_memory.cli import _get_active_backends
+
+        active = _get_active_backends({
+            "providers": ["mem0", "honcho"]
+        })
+        assert active == ["mem0", "honcho"]
+
+    def test_get_active_backends_respects_disabled(self):
+        """_get_active_backends skips disabled backends."""
+        from multi_memory.cli import _get_active_backends
+
+        active = _get_active_backends({
+            "multi": {"backends": {"mnemosyne": True, "mem0": False}}
+        })
+        assert active == ["mnemosyne"]
+
+
+# ── Prompt helper ───────────────────────────────────────────────────────
+
+class TestPrompt:
+    def test_prompt_returns_input(self, monkeypatch):
+        """_prompt reads stdin."""
+        from multi_memory.cli import _prompt
+
+        monkeypatch.setattr("sys.stdin", __import__("io").StringIO("hello\n"))
+        result = _prompt("Name")
+        assert result == "hello"
+
+    def test_prompt_returns_default_on_empty(self, monkeypatch):
+        """_prompt returns default when input is blank."""
+        from multi_memory.cli import _prompt
+
+        monkeypatch.setattr("sys.stdin", __import__("io").StringIO("\n"))
+        result = _prompt("Name", default="world")
+        assert result == "world"
+
+    def test_prompt_secret_uses_masked(self, monkeypatch):
+        """_prompt with secret=True uses masked prompt."""
+        from multi_memory.cli import _prompt
+
+        monkeypatch.setattr("multi_memory.cli.masked_secret_prompt", lambda p: "secret123")
+        result = _prompt("Key", secret=True)
+        assert result == "secret123"
+
+
+# ── setup command ───────────────────────────────────────────────────────
+
+class TestCmdSetup:
+    def test_setup_no_backends(self, capsys):
+        """setup with no backends available prints message."""
+        args = argparse.Namespace(multi_command="setup", backend=None)
+        with mock.patch("multi_memory.cli._get_available_backends", return_value=[]):
+            multi_command(args)
         out = capsys.readouterr().out
-        assert "Removed" in out
+        assert "No memory backend plugins detected" in out
+
+    def test_setup_backend_not_found(self, capsys):
+        """setup <name> with unknown backend prints error."""
+        args = argparse.Namespace(multi_command="setup", backend="nonexistent")
+        with mock.patch("multi_memory.cli._get_available_backends",
+                         return_value=[("mnemosyne", "local", None)]):
+            with mock.patch("multi_memory.cli.load_config", return_value={}):
+                multi_command(args)
+        out = capsys.readouterr().out
+        assert "not found" in out
+
+
+# ── dispatch ────────────────────────────────────────────────────────────
+
+class TestDispatchSetup:
+    def test_dispatch_setup_calls_wizard(self):
+        """multi_command with setup (no backend) calls wizard."""
+        args = argparse.Namespace(multi_command="setup", backend=None)
+        with mock.patch("multi_memory.cli._cmd_setup_wizard") as m:
+            multi_command(args)
+        m.assert_called_once()
+
+    def test_dispatch_setup_with_backend(self):
+        """multi_command with setup <name> calls backend setup."""
+        args = argparse.Namespace(multi_command="setup", backend="mem0")
+        with mock.patch("multi_memory.cli._cmd_setup_backend") as m:
+            multi_command(args)
+        m.assert_called_once_with("mem0")
+
+
+# ── env var writer ──────────────────────────────────────────────────────
+
+class TestEnvVars:
+    def test_write_env_vars_creates_file(self, tmp_path):
+        """_write_env_vars creates .env with proper content."""
+        from multi_memory.cli import _write_env_vars
+
+        env_path = tmp_path / ".env"
+        _write_env_vars(env_path, {"MEM0_API_KEY": "test-key"})
+        content = env_path.read_text()
+        assert "MEM0_API_KEY=test-key" in content
+
+    def test_write_env_vars_updates_existing(self, tmp_path):
+        """_write_env_vars updates existing keys, preserves others."""
+        from multi_memory.cli import _write_env_vars
+
+        env_path = tmp_path / ".env"
+        env_path.write_text("OLD_KEY=old\nMEM0_API_KEY=new\n")
+        _write_env_vars(env_path, {"MEM0_API_KEY": "updated"})
+        content = env_path.read_text()
+        assert "MEM0_API_KEY=updated" in content
+        assert "OLD_KEY=old" in content
+
+    def test_write_env_vars_restricts_permissions(self, tmp_path):
+        """_write_env_vars sets 0600 on .env file."""
+        from multi_memory.cli import _write_env_vars
+        import stat
+
+        env_path = tmp_path / ".env"
+        _write_env_vars(env_path, {"KEY": "val"})
+        mode = env_path.stat().st_mode & 0o777
+        assert mode == 0o600
+
+
+# ── find provider dir ───────────────────────────────────────────────────
+
+class TestFindProviderDir:
+    def test_find_provider_dir_returns_none_when_discovery_unavailable(self):
+        """_find_provider_dir returns None when plugin system unavailable."""
+        from multi_memory.cli import _find_provider_dir
+
+        result = _find_provider_dir("mnemosyne")
+        assert result is None

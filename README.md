@@ -34,24 +34,16 @@ Restart Hermes. The provider auto-discovers installed backends.
 
 ## How it works
 
-Hermes only lets one memory provider be active. This plugin is that one
-provider — it delegates to as many backends as you list.
+Hermes normally only lets you use one memory system at a time. This plugin
+lets you use several at once.
 
-Every Hermes memory backend works: Holographic, Mnemosyne, Mem0, Honcho,
-OpenViking, Hindsight, RetainDB, ByteRover, Supermemory, and any
-third-party backend dropped into `plugins/memory/<name>/`. The plugin
-auto-discovers them — no code changes needed, just add the name.
+You tell it which ones you want. It talks to all of them whenever Hermes
+needs to remember something or look something up. The answers come back
+combined — as if they all came from one place.
 
-When the model calls a memory tool (like `mnemosyne_recall` or
-`holographic_store`), the plugin routes it to the right backend by matching
-the tool name prefix. Lifecycle hooks (`initialize`, `shutdown`,
-`sync_turn`, `on_session_end`, etc.) fire on every active backend. If one
-backend fails, the others keep working.
-
-A circuit breaker protects against broken backends: 3 consecutive failures
-opens the circuit, the backend is skipped for 30 seconds, then gets one
-probe call. If the probe succeeds, the circuit closes. If it fails, the
-cooldown doubles (up to 5 minutes).
+If one of them stops working, the plugin notices and skips it. It tries
+again after a little while. If it's still broken, it waits longer next
+time. The others keep working fine in the meantime.
 
 ---
 

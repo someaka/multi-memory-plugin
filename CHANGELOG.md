@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.7.2] — 2026-06-06
 
+### Added
+- **Interactive setup wizard (`hermes multi setup`)** — ported the full curses-based
+  memory backend configuration UX from the hermes-agent fork. Includes:
+  - `hermes multi setup` — interactive picker for adding/removing backends
+  - `hermes multi setup <name>` — per-backend field-by-field config (API keys,
+    model choices, endpoints)
+  - Dependency auto-install from provider `plugin.yaml` (uv/pip)
+  - Env var management — writes secrets to `~/.hermes/.env` with 0600 permissions
+  - "Add alongside" vs "Replace all" prompt when backends are already active
+  - Curses-based pickers with terminal fallbacks for non-curses environments
+- **Rich status display** — `hermes multi status` now shows per-backend health,
+  config, env var status, and plugin installation state
+- **Backend discovery** — auto-discovers installed memory providers via the
+  Hermes plugin system (with static registry fallback for standalone use)
+
+### Changed
+- **CLI docs** — README, CONFIG.md, AGENT.md, and CONTRIBUTING.md updated to
+  promote `hermes multi setup` over manual `hermes config set` commands
+- **CONTRIBUTING.md** — setup instructions use `uv` instead of `pip install -e`
+
 ### Fixed
 - **Plugin invisible in `hermes plugins list` and dashboard (regression)** —
   v0.7.1 removed the general plugin symlink at `~/.hermes/plugins/multi/`

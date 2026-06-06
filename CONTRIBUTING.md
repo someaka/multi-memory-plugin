@@ -5,13 +5,13 @@
 ```bash
 git clone https://github.com/someaka/multi-memory-plugin.git
 cd multi-memory-plugin
-pip install -e ".[all,test]"
+uv sync --extra test
 ```
 
 ## Run tests
 
 ```bash
-python -m pytest tests/ -v
+uv run pytest tests/ -v
 ```
 
 ## Lint
@@ -23,7 +23,7 @@ ruff check src/ tests/ --fix   # auto-fix
 
 ## Adding a new backend
 
-1. Create `src/multi_memory/adapters.py` — add a `_YourAdapter` class:
+1. In `src/multi_memory/adapters.py` — add a `_YourAdapter` class:
 
 ```python
 class _YourAdapter(_SubProviderAdapter):

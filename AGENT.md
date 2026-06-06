@@ -138,11 +138,18 @@ Registered via `cli.py`'s `register_cli()` function, discovered by
 Hermes's `discover_plugin_cli_commands()`.
 
 ```bash
-hermes multi status          # active backends + config format
-hermes multi list            # all backends, active markers
-hermes multi add <name>      # add a backend to config
-hermes multi remove <name>   # remove a backend from config
+hermes multi setup            # interactive curses-based setup wizard
+hermes multi setup <name>     # configure a specific backend interactively
+hermes multi status           # active backends + health + plugin status
+hermes multi list             # all backends, active markers
+hermes multi add <name>       # add a backend to config
+hermes multi remove <name>    # remove a backend from config
 ```
+
+The setup wizard walks through per-backend configuration fields (API keys,
+model choices, endpoint URLs) using a curses-based picker with terminal
+fallback. It auto-installs Python dependencies from each backend's
+`plugin.yaml` and writes secrets to `~/.hermes/.env` with 0600 permissions.
 
 `ALL_BACKENDS` in `cli.py` lists all 9 hardcoded backends. Custom backends
 (via `_GenericAdapter`) are discovered at runtime but not listed in CLI help.
@@ -234,7 +241,7 @@ assert not tracker.is_open("test")  # half-open: allows probe
 | `src/multi_memory/__init__.py` | `register()` entry point, `MultiMemoryProvider` (568 lines), `_snapshot()`, `_close_or_shutdown()`, `_is_disabled()`, `_fan_out()`, `_try_generic_backend()`, `__repr__` |
 | `src/multi_memory/adapters.py` | `_SubProviderAdapter` base + `_renorm_schemas()` + cached introspection + 9 hardcoded adapters + `_GenericAdapter` (396 lines) |
 | `src/multi_memory/budget.py` | `ToolBudgetWarning` — warns when schema count exceeds threshold |
-| `src/multi_memory/cli.py` | `register_cli()` + `hermes multi {status,list,add,remove}` + `ALL_BACKENDS` |
+| `src/multi_memory/cli.py` | `register_cli()` + `hermes multi {setup,status,list,add,remove}` + interactive curses wizard + dependency installer + env var manager + `ALL_BACKENDS` (886 lines) |
 | `src/multi_memory/config.py` | `load_multi_config()`, `get_enabled_backends()` with lazy paths |
 | `src/multi_memory/discovery.py` | `discover_backends()`, `installed_backends()` |
 | `src/multi_memory/health.py` | `HealthTracker` — half-open circuit breaker with exponential backoff, `timeout_wrapper` |
@@ -287,9 +294,14 @@ or `null` disables it.
    = plugin directory name.
 
 8. **Install via `hermes plugins install`** —
-   `hermes plugins install someaka/multi-memory-plugin`. Not a symlink.
-   For development, two symlinks are required:
+   `hermes plugins install someaka/multi-memory-plugin`. Then set the provider
+   and add backends:
+   ```bash
+   hermes plugins install someaka/multi-memory-plugin
+   hermes config set memory.provider multi
+   hermes multi setup            # interactive wizard — picks backends + configures them
+   ```
+   For development, use `--force` to reinstall:
    ```bash
    hermes plugins install --force someaka/multi-memory-plugin
-   hermes config set memory.provider multi
    ```

@@ -186,20 +186,25 @@ def register(ctx) -> None:
 
     Registers the MultiMemoryProvider with the memory system **and**
     the ``hermes multi`` CLI commands with the general plugin system.
-    The CLI registration here ensures the commands appear in
-    ``hermes plugins list`` and the dashboard even before
-    ``memory.provider: multi`` is configured.
 
-    Logs a warning on older Hermes versions that lack
-    ``register_cli_command`` on the PluginContext.
+    Two separate callers may invoke this function:
+
+    * **Memory scanner** (``_ProviderCollector``) — has
+      ``register_memory_provider``.  Registers the provider so it
+      becomes available as ``memory.provider: multi``.
+    * **General scanner** (``PluginContext``) — has
+      ``register_cli_command`` but NOT ``register_memory_provider``.
+      In current Hermes the general scanner skips memory plugins
+      (kind="exclusive") so this path is never reached, but the
+      capability check keeps the code safe in case scanning changes.
+
+    The provider is only instantiated when the memory scanner is
+    the caller, avoiding unnecessary config reads and adapter
+    creation during general plugin discovery.
     """
     if hasattr(ctx, "register_memory_provider"):
-        ctx.register_memory_provider(MultiMemoryProvider())
-    else:
-        logger.warning(
-            "[multi-memory] register_memory_provider not available on context — "
-            "memory provider not registered (CLI commands may still work)"
-        )
+        provider = MultiMemoryProvider()
+        ctx.register_memory_provider(provider)
 
     if hasattr(ctx, "register_cli_command"):
         from .cli import multi_command, register_cli  # noqa: PLC0415
@@ -210,11 +215,6 @@ def register(ctx) -> None:
             setup_fn=register_cli,
             handler_fn=multi_command,
             description="Multi-memory backend management CLI",
-        )
-    else:
-        logger.info(
-            "[multi-memory] register_cli_command not available on context — "
-            "skipping CLI registration (older Hermes version)"
         )
 
 

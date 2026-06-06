@@ -20,15 +20,15 @@ class TestNormaliseMultiConfig:
         result = _normalise_multi_config({"providers": ["holographic"]})
         assert result == {"holographic": {}}
 
-    def test_both_formats_providers_wins(self):
-        """providers list wins over multi.backends when both present."""
+    def test_both_formats_backends_wins(self):
+        """multi.backends dict wins over providers list when both present (canonical format)."""
         result = _normalise_multi_config(
             {
                 "providers": ["holographic"],
                 "multi": {"backends": {"mnemosyne": {}}},
             }
         )
-        assert result == {"holographic": {}}
+        assert result == {"mnemosyne": {}}
 
     def test_providers_not_a_list(self):
         """providers that isn't a list triggers multi.backends fallback."""

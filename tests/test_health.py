@@ -13,8 +13,9 @@ from multi_memory.health import (
     _CONSECUTIVE_FAILURES_TO_OPEN,
     _HALF_OPEN_COOLDOWN_SECONDS,
     HealthTracker,
-    timeout_wrapper,
 )
+
+from conftest import timeout_wrapper
 
 
 class TestHealthTracker:

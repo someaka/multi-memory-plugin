@@ -218,7 +218,6 @@ class MultiMemoryProvider(MemoryProvider):
         self._health = HealthTracker()
         self._lock = threading.RLock()
         self._load_config()
-        self._validate_namespaces()
 
     def __repr__(self) -> str:
         with self._lock:
@@ -557,18 +556,19 @@ def _normalise_multi_config(cfg: dict | None) -> dict:
     INVESTIGATION-C canonical  -  ``providers: list[str]`` (fork format)
     PLAN spec                  -  ``multi.backends: dict[name -> enabled]``
 
-    Both formats are accepted.  ``providers`` list wins when non-empty.
+    Both formats are accepted.  ``multi.backends`` dict is canonical;
+    ``providers`` list is a legacy fallback.
     Returns ``{}`` on absence or parse failure.
     """
     if not isinstance(cfg, dict):
         return {}
+    multi_cfg = cfg.get("multi") or {}
+    backends = multi_cfg.get("backends") or {}
+    if isinstance(backends, dict) and backends:
+        return backends
     providers = cfg.get("providers")
     if isinstance(providers, list) and providers:
         return {p: {} for p in providers}
-    multi_cfg = cfg.get("multi") or {}
-    backends = multi_cfg.get("backends") or {}
-    if isinstance(backends, dict):
-        return backends
     return {}
 
 

@@ -14,7 +14,6 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -95,24 +94,3 @@ class HealthTracker:
             self._counters.pop(backend_key, None)
             self._opened_at.pop(backend_key, None)
             self._cooldown.pop(backend_key, None)
-
-
-def timeout_wrapper(fn: Any, timeout: float = 30.0) -> Any:
-    """Run *fn()* with a wall-clock timeout.
-
-    Returns the function result, or raises ``TimeoutError`` if *fn*
-    doesn't finish within *timeout* seconds.
-
-    .. note:: This uses ``concurrent.futures.ThreadPoolExecutor`` which
-       means the function actually runs in a separate thread.  If *fn*
-       mutates shared state, ensure it is thread-safe.
-    """
-    from concurrent.futures import ThreadPoolExecutor  # noqa: PLC0415
-    from concurrent.futures import TimeoutError as _FutTimeout  # noqa: PLC0415
-
-    with ThreadPoolExecutor(max_workers=1) as pool:
-        future = pool.submit(fn)
-        try:
-            return future.result(timeout=timeout)
-        except _FutTimeout:
-            raise TimeoutError(f"Operation timed out after {timeout}s") from None

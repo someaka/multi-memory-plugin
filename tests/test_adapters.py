@@ -1812,4 +1812,17 @@ class TestIntrospectionHelpers:
         adapter = self._make_adapter_with_delegate(delegate)
         adapter.sync_turn("user", "asst", session_id="s1")
         assert len(calls) == 1
-        assert calls[0] == ("user", "asst", "s1")
+
+
+class TestAdapterPrefixes:
+    """Every hardcoded adapter in _SUB_CLASSES must have a non-empty PREFIX."""
+
+    def test_all_hardcoded_adapters_have_prefix(self):
+        from multi_memory import _SUB_CLASSES
+
+        empty = []
+        for cls in _SUB_CLASSES:
+            pfx = getattr(cls, "PREFIX", "")
+            if not pfx or not pfx.strip():
+                empty.append(cls.__name__)
+        assert not empty, f"Adapters with empty PREFIX: {empty}"

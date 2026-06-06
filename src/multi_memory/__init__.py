@@ -304,9 +304,7 @@ class MultiMemoryProvider(MemoryProvider):
             try:
                 schemas = adapter.get_tool_schemas()
                 validated.append(adapter)
-                logger.info(
-                    "[multi-memory] %s validated (%d tools)", adapter.name, len(schemas)
-                )
+                logger.info("[multi-memory] %s validated (%d tools)", adapter.name, len(schemas))
             except Exception as exc:  # noqa: PERF203
                 logger.warning(
                     "[multi-memory] %s failed schema validation — NOT registered: %s",
@@ -736,6 +734,6 @@ def _try_generic_backend(name: str, backends: list[_SubProviderAdapter]) -> None
             name,
             exc,
         )
+
+
 _loading_config = False
-
-

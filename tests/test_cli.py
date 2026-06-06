@@ -301,6 +301,7 @@ class TestCmdRemove:
         # switching to 'default' makes `hermes multi add` disappear.
         assert saved["memory"]["provider"] == "multi"
 
+
 class TestCmdStatusEdgeCases:
     """Coverage for status display edge cases."""
 
@@ -311,6 +312,7 @@ class TestCmdStatusEdgeCases:
             _cmd_status(args)
         out = capsys.readouterr().out
         import json
+
         data = json.loads(out)
         assert data["active_backends"] == ["mnemosyne"]
 
@@ -340,11 +342,13 @@ class TestCmdStatusEdgeCases:
         """status handles discovery exception gracefully."""
         config = {"memory": {"multi": {"backends": {"mnemosyne": {}}}}}
         args = argparse.Namespace(json_output=False)
-        with mock.patch("multi_memory.cli.load_config", return_value=config), \
-             mock.patch(
-                 "multi_memory.discovery.discover_backends",
-                 side_effect=RuntimeError("boom"),
-             ):
+        with (
+            mock.patch("multi_memory.cli.load_config", return_value=config),
+            mock.patch(
+                "multi_memory.discovery.discover_backends",
+                side_effect=RuntimeError("boom"),
+            ),
+        ):
             _cmd_status(args)
         out = capsys.readouterr().out
         assert "Multi-Memory Provider" in out
@@ -368,8 +372,10 @@ class TestCmdStatusEdgeCases:
         }
         args = argparse.Namespace(backend="mnemosyne")
         saved = {}
-        with mock.patch("multi_memory.cli.load_config", return_value=config), \
-             mock.patch("multi_memory.cli.save_config", side_effect=saved.update):
+        with (
+            mock.patch("multi_memory.cli.load_config", return_value=config),
+            mock.patch("multi_memory.cli.save_config", side_effect=saved.update),
+        ):
             _cmd_remove(args)
         out = capsys.readouterr().out
         assert "Removed" in out

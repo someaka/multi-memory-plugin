@@ -220,6 +220,7 @@ class TestInstalledBackends:
             result = installed_backends()
         assert result == ["a", "c"]
 
+
 class TestIsMnemosynePluginInstalled:
     """_is_mnemosyne_plugin_installed() detects the plugin directory."""
 

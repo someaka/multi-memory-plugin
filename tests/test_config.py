@@ -158,6 +158,7 @@ class TestGetEnabledBackends:
         result = get_enabled_backends(cfg)
         assert result == []
 
+
 class TestLoadMultiConfigErrors:
     """Error paths in load_multi_config."""
 

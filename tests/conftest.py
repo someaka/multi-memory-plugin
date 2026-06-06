@@ -15,7 +15,7 @@ if _src not in sys.path:
     sys.path.insert(0, _src)
 
 
-_HERMES_AGENT_ROOT: str | None = None
+_state = {"hermes_agent_root": None}
 
 
 def _holographic_available() -> bool:
@@ -30,7 +30,6 @@ def _holographic_available() -> bool:
     the source root needs to be on sys.path for ``find_spec`` to
     resolve ``plugins.memory.holographic``.
     """
-    global _HERMES_AGENT_ROOT
 
     try:
         if find_spec("plugins.memory.holographic") is not None:
@@ -47,7 +46,7 @@ def _holographic_available() -> bool:
             # Found the source — add it to sys.path so imports work
             if candidate not in sys.path:
                 sys.path.insert(0, candidate)
-                _HERMES_AGENT_ROOT = candidate
+                _state["hermes_agent_root"] = candidate
             return True
     return False
 
@@ -62,8 +61,7 @@ def _ensure_hermes_agent_on_path() -> None:
     Uses the same discovery logic as _holographic_available() for
     consistency.
     """
-    global _HERMES_AGENT_ROOT
-    if _HERMES_AGENT_ROOT is not None:
+    if _state["hermes_agent_root"] is not None:
         return
 
     for candidate in (
@@ -74,7 +72,7 @@ def _ensure_hermes_agent_on_path() -> None:
         if os.path.isfile(p):
             if candidate not in sys.path:
                 sys.path.insert(0, candidate)
-                _HERMES_AGENT_ROOT = candidate
+                _state["hermes_agent_root"] = candidate
             return
 
 

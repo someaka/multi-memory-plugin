@@ -188,11 +188,11 @@ def _get_available_backends() -> list[tuple[str, str, Any]]:  # pragma: no cover
     # Backends known to hang during load_memory_provider due to
     # initialization loops — skip them. The discovery metadata
     # (name + setup_hint from ALL_BACKENDS) is still accurate.
-    _BACKENDS_THAT_MAY_HANG = frozenset({"honcho"})
+    _backends_that_may_hang = frozenset({"honcho"})
     for name, _desc, _available in raw:
         if name == "multi":
             continue  # skip self to avoid recursion
-        if name in _BACKENDS_THAT_MAY_HANG:
+        if name in _backends_that_may_hang:
             # Use the ALL_BACKENDS registry metadata instead of loading
             desc = ALL_BACKENDS.get(name, "local")
             results.append((name, desc, None))

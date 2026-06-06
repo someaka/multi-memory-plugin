@@ -183,6 +183,11 @@ def register(ctx) -> None:
     """
     if hasattr(ctx, "register_memory_provider"):
         ctx.register_memory_provider(MultiMemoryProvider())
+    else:
+        logger.warning(
+            "[multi-memory] register_memory_provider not available on context — "
+            "memory provider not registered (CLI commands may still work)"
+        )
 
     if hasattr(ctx, "register_cli_command"):
         from .cli import multi_command, register_cli  # noqa: PLC0415
@@ -193,6 +198,11 @@ def register(ctx) -> None:
             setup_fn=register_cli,
             handler_fn=multi_command,
             description="Multi-memory backend management CLI",
+        )
+    else:
+        logger.info(
+            "[multi-memory] register_cli_command not available on context — "
+            "skipping CLI registration (older Hermes version)"
         )
 
 

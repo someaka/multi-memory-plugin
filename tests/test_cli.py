@@ -96,8 +96,10 @@ class TestCmdStatus:
             }
         }
         args = argparse.Namespace(json_output=False)
-        with mock.patch("multi_memory.cli.load_config", return_value=config), \
-             mock.patch("multi_memory.cli.get_hermes_home", return_value="/tmp/.hermes"):
+        with (
+            mock.patch("multi_memory.cli.load_config", return_value=config),
+            mock.patch("multi_memory.cli.get_hermes_home", return_value="/tmp/.hermes"),
+        ):
             _cmd_status(args)
         out = capsys.readouterr().out
         assert "mnemosyne" in out
@@ -108,8 +110,10 @@ class TestCmdStatus:
         """status handles providers list format."""
         config = {"memory": {"providers": ["mem0", "honcho"]}}
         args = argparse.Namespace(json_output=False)
-        with mock.patch("multi_memory.cli.load_config", return_value=config), \
-             mock.patch("multi_memory.cli.get_hermes_home", return_value="/tmp/.hermes"):
+        with (
+            mock.patch("multi_memory.cli.load_config", return_value=config),
+            mock.patch("multi_memory.cli.get_hermes_home", return_value="/tmp/.hermes"),
+        ):
             _cmd_status(args)
         out = capsys.readouterr().out
         assert "mem0" in out
@@ -131,8 +135,10 @@ class TestCmdStatus:
         """status with no backends shows built-in only."""
         config = {"memory": {}}
         args = argparse.Namespace(json_output=False)
-        with mock.patch("multi_memory.cli.load_config", return_value=config), \
-             mock.patch("multi_memory.cli.get_hermes_home", return_value="/tmp/.hermes"):
+        with (
+            mock.patch("multi_memory.cli.load_config", return_value=config),
+            mock.patch("multi_memory.cli.get_hermes_home", return_value="/tmp/.hermes"),
+        ):
             _cmd_status(args)
         out = capsys.readouterr().out
         assert "built-in only" in out

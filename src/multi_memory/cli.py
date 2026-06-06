@@ -32,22 +32,29 @@ logger = logging.getLogger(__name__)
 try:
     from hermes_cli.config import load_config, save_config
 except ImportError:
+
     def load_config() -> dict:  # type: ignore[misc]
         return {}
+
     def save_config(config: dict) -> None:  # type: ignore[misc]
         pass
+
 
 try:
     from hermes_constants import get_hermes_home
 except ImportError:
+
     def get_hermes_home() -> str:
         return os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes"))
+
 
 try:
     from hermes_cli.secret_prompt import masked_secret_prompt
 except ImportError:
+
     def masked_secret_prompt(prompt: str) -> str:
         import getpass
+
         return getpass.getpass(prompt)
 
 
@@ -68,19 +75,22 @@ ALL_BACKENDS: dict[str, str] = {
 
 # ── argparse registration ─────────────────────────────────────────────────
 
+
 def register_cli(subparser: argparse.ArgumentParser) -> None:
     """Build the ``hermes multi`` argparse subcommand tree."""
     subs = subparser.add_subparsers(dest="multi_command")
 
     # hermes multi status
     sp = subs.add_parser("status", help="Show active backends and health status")
-    sp.add_argument("--json", dest="json_output", action="store_true",
-                    help="Machine-readable JSON output")
+    sp.add_argument(
+        "--json", dest="json_output", action="store_true", help="Machine-readable JSON output"
+    )
 
     # hermes multi list
     sp = subs.add_parser("list", help="List all known backends")
-    sp.add_argument("--json", dest="json_output", action="store_true",
-                    help="Machine-readable JSON output")
+    sp.add_argument(
+        "--json", dest="json_output", action="store_true", help="Machine-readable JSON output"
+    )
 
     # hermes multi add <backend>
     sp = subs.add_parser("add", help="Add a memory backend to the active config")
@@ -96,6 +106,7 @@ def register_cli(subparser: argparse.ArgumentParser) -> None:
 
 
 # ── Command router ─────────────────────────────────────────────────────────
+
 
 def multi_command(args: argparse.Namespace) -> None:
     """Handler for ``hermes multi`` subcommands."""
@@ -128,6 +139,7 @@ def multi_command(args: argparse.Namespace) -> None:
 
 # ── Config helpers ─────────────────────────────────────────────────────────
 
+
 def _get_active_backends(memory_cfg: dict) -> list[str]:
     """Extract active backend names from memory config."""
     multi_cfg = memory_cfg.get("multi", {})
@@ -143,6 +155,7 @@ def _get_active_backends(memory_cfg: dict) -> list[str]:
 
 # ── Provider discovery (Hermes plugin system) ──────────────────────────────
 
+
 def _get_available_backends() -> list[tuple[str, str, Any]]:
     """Discover installed memory backends via the Hermes plugin system.
 
@@ -151,6 +164,7 @@ def _get_available_backends() -> list[tuple[str, str, Any]]:
     """
     try:
         from plugins.memory import discover_memory_providers, load_memory_provider
+
         raw = discover_memory_providers()
     except Exception:
         raw = []
@@ -189,10 +203,12 @@ def _get_available_backends() -> list[tuple[str, str, Any]]:
 
 # ── Dependency installer ───────────────────────────────────────────────────
 
+
 def _find_provider_dir(provider_name: str) -> Path | None:
     """Find the plugin directory for a memory provider."""
     try:
         from plugins.memory import find_provider_dir
+
         return find_provider_dir(provider_name)
     except Exception:
         return None
@@ -211,6 +227,7 @@ def _install_dependencies(provider_name: str) -> None:  # noqa: PLR0912,PLR0915
 
     try:
         import yaml
+
         with open(yaml_path, encoding="utf-8") as f:
             meta = yaml.safe_load(f) or {}
     except Exception:
@@ -276,9 +293,7 @@ def _install_dependencies(provider_name: str) -> None:  # noqa: PLR0912,PLR0915
         install_cmd_str = dep.get("install", "")
         if check_cmd:
             try:
-                subprocess.run(
-                    shlex.split(check_cmd), check=True, capture_output=True, timeout=5
-                )
+                subprocess.run(shlex.split(check_cmd), check=True, capture_output=True, timeout=5)
             except Exception:
                 if install_cmd_str:
                     print(f"\n  ⚠ '{dep_name}' not found. Install with:")
@@ -286,6 +301,7 @@ def _install_dependencies(provider_name: str) -> None:  # noqa: PLR0912,PLR0915
 
 
 # ── Env var manager ────────────────────────────────────────────────────────
+
 
 def _write_env_vars(env_path: Path, env_writes: dict) -> None:
     """Append or update env vars in .env file, restricting permissions."""
@@ -312,12 +328,14 @@ def _write_env_vars(env_path: Path, env_writes: dict) -> None:
     env_path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
     try:
         import stat
+
         env_path.chmod(stat.S_IRUSR | stat.S_IWUSR)  # 0600
     except OSError:
         pass
 
 
 # ── Interactive picker ─────────────────────────────────────────────────────
+
 
 def _curses_select(title: str, items: list[tuple[str, str]], default: int = 0) -> int:
     """Interactive single-select with arrow keys (curses-based).
@@ -326,10 +344,8 @@ def _curses_select(title: str, items: list[tuple[str, str]], default: int = 0) -
     """
     try:
         from hermes_cli.curses_ui import curses_radiolist
-        display_items = [
-            f"{label}  {desc}" if desc else label
-            for label, desc in items
-        ]
+
+        display_items = [f"{label}  {desc}" if desc else label for label, desc in items]
         return curses_radiolist(title, display_items, selected=default, cancel_returns=default)
     except ImportError:
         # Simple terminal fallback
@@ -345,14 +361,14 @@ def _curses_select(title: str, items: list[tuple[str, str]], default: int = 0) -
             return default
 
 
-def _curses_checklist(title: str, items: list[str],
-                       selected: set[int] | None = None) -> set[int]:
+def _curses_checklist(title: str, items: list[str], selected: set[int] | None = None) -> set[int]:
     """Interactive multi-select checklist (curses-based).
 
     Falls back to simple space-separated terminal picker if curses unavailable.
     """
     try:
         from hermes_cli.curses_ui import curses_checklist
+
         return curses_checklist(title, items, selected=selected or set())
     except ImportError:
         # Simple terminal fallback
@@ -372,6 +388,7 @@ def _curses_checklist(title: str, items: list[str],
 
 
 # ── Interactive setup wizard ───────────────────────────────────────────────
+
 
 def _cmd_setup_wizard(args: argparse.Namespace) -> None:  # noqa: PLR0912,PLR0915
     """Interactive curses-based memory backend setup wizard."""
@@ -513,7 +530,7 @@ def _do_backend_setup(name: str, provider: Any) -> None:  # noqa: PLR0912,PLR091
             ("Replace all", f"Use {name} only"),
         ]
         choice_idx = _curses_select("  Active backends already configured", choice_items, default=0)
-        replace_existing = (choice_idx == 1)
+        replace_existing = choice_idx == 1
 
     # If provider has post_setup, delegate
     if provider and hasattr(provider, "post_setup"):
@@ -533,9 +550,7 @@ def _do_backend_setup(name: str, provider: Any) -> None:  # noqa: PLR0912,PLR091
 
     # Generic schema-based setup
     schema = (
-        provider.get_config_schema()
-        if provider and hasattr(provider, "get_config_schema")
-        else []
+        provider.get_config_schema() if provider and hasattr(provider, "get_config_schema") else []
     )
 
     provider_config: dict = memory_cfg.get(name, {})
@@ -637,6 +652,7 @@ def _do_backend_setup(name: str, provider: Any) -> None:  # noqa: PLR0912,PLR091
 
 # ── Prompt helper ──────────────────────────────────────────────────────────
 
+
 def _prompt(label: str, default: str | None = None, secret: bool = False) -> str:
     """Prompt for a value with optional default and secret masking."""
     suffix = f" [{default}]" if default else ""
@@ -650,6 +666,7 @@ def _prompt(label: str, default: str | None = None, secret: bool = False) -> str
 
 
 # ── Config writers ─────────────────────────────────────────────────────────
+
 
 def _set_active_backends(memory_cfg: dict, names: list[str]) -> None:
     """Write backend list to both config formats."""
@@ -683,6 +700,7 @@ def _remove_backend_from_config(name: str, memory_cfg: dict) -> None:
 
 # ── Status ─────────────────────────────────────────────────────────────────
 
+
 def _cmd_status(args: argparse.Namespace) -> None:  # noqa: PLR0912,PLR0915
     """Show active backends and their health/config."""
     config = load_config()
@@ -692,14 +710,18 @@ def _cmd_status(args: argparse.Namespace) -> None:  # noqa: PLR0912,PLR0915
     json_out = getattr(args, "json_output", False)
 
     if json_out:
-        print(json.dumps({
-            "provider": top_provider or "built-in",
-            "active_backends": active,
-            "config_format": (
-                "backends" if memory_cfg.get("multi", {}).get("backends")
-                else "providers"
-            ),
-        }, indent=2))
+        print(
+            json.dumps(
+                {
+                    "provider": top_provider or "built-in",
+                    "active_backends": active,
+                    "config_format": (
+                        "backends" if memory_cfg.get("multi", {}).get("backends") else "providers"
+                    ),
+                },
+                indent=2,
+            )
+        )
         return
 
     print("\n  Memory status")
@@ -728,8 +750,7 @@ def _cmd_status(args: argparse.Namespace) -> None:  # noqa: PLR0912,PLR0915
                 for key, val in top_config.items():
                     if isinstance(val, dict) and val:
                         items = ", ".join(
-                            f"{k}" if v in ({}, True) else f"{k}({v})"
-                            for k, v in val.items()
+                            f"{k}" if v in ({}, True) else f"{k}({v})" for k, v in val.items()
                         )
                         print(f"      {key}: {items}")
                     elif isinstance(val, list):
@@ -747,8 +768,7 @@ def _cmd_status(args: argparse.Namespace) -> None:  # noqa: PLR0912,PLR0915
                 for key, val in backend_cfg.items():
                     if isinstance(val, dict) and val:
                         items = ", ".join(
-                            f"{k}" if v in ({}, True) else f"{k}({v})"
-                            for k, v in val.items()
+                            f"{k}" if v in ({}, True) else f"{k}({v})" for k, v in val.items()
                         )
                         print(f"      {key}: {items}")
                     elif isinstance(val, list):
@@ -801,6 +821,7 @@ def _cmd_status(args: argparse.Namespace) -> None:  # noqa: PLR0912,PLR0915
 
 # ── List ───────────────────────────────────────────────────────────────────
 
+
 def _cmd_list(args: argparse.Namespace) -> None:
     """List all known backends — installed and available."""
     json_out = getattr(args, "json_output", False)
@@ -810,11 +831,13 @@ def _cmd_list(args: argparse.Namespace) -> None:
     if json_out:
         rows = []
         for name, desc in ALL_BACKENDS.items():
-            rows.append({
-                "name": name,
-                "description": desc,
-                "active": name in active_set,
-            })
+            rows.append(
+                {
+                    "name": name,
+                    "description": desc,
+                    "active": name in active_set,
+                }
+            )
         print(json.dumps(rows, indent=2))
         return
 
@@ -832,6 +855,7 @@ def _cmd_list(args: argparse.Namespace) -> None:
 
 
 # ── Add / Remove ───────────────────────────────────────────────────────────
+
 
 def _cmd_add(args: argparse.Namespace) -> None:
     """Add a backend to the active config."""

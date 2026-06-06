@@ -43,9 +43,7 @@ except ImportError:  # pragma: no cover — standalone stubs
 try:
     from hermes_constants import get_hermes_home
 except ImportError:  # pragma: no cover — standalone stubs
-
-    def get_hermes_home() -> str:
-        return os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes"))
+    from multi_memory.config import _get_hermes_home as get_hermes_home
 
 
 try:
@@ -167,7 +165,8 @@ def _get_available_backends() -> list[tuple[str, str, Any]]:  # pragma: no cover
         from plugins.memory import discover_memory_providers, load_memory_provider
 
         raw = discover_memory_providers()
-    except Exception:
+    except Exception as exc:
+        logger.debug("[multi-memory] discover_memory_providers() failed: %s", exc)
         raw = []
 
     if not raw:
@@ -183,7 +182,8 @@ def _get_available_backends() -> list[tuple[str, str, Any]]:  # pragma: no cover
             provider = load_memory_provider(name)
             if not provider:
                 continue
-        except Exception:
+        except Exception as exc:
+            logger.debug("[multi-memory] load_memory_provider('%s') failed: %s", name, exc)
             continue
 
         schema = provider.get_config_schema() if hasattr(provider, "get_config_schema") else []
@@ -211,7 +211,8 @@ def _find_provider_dir(provider_name: str) -> Path | None:  # pragma: no cover
         from plugins.memory import find_provider_dir
 
         return find_provider_dir(provider_name)
-    except Exception:
+    except Exception as exc:
+        logger.debug("[multi-memory] find_provider_dir('%s') failed: %s", provider_name, exc)
         return None
 
 
@@ -232,7 +233,8 @@ def _install_dependencies(provider_name: str) -> None:  # noqa: PLR0912,PLR0915 
 
         with open(yaml_path, encoding="utf-8") as f:
             meta = yaml.safe_load(f) or {}
-    except Exception:
+    except Exception as exc:
+        logger.debug("[multi-memory] failed to parse plugin.yaml for '%s': %s", provider_name, exc)
         return
 
     pip_deps = meta.get("pip_dependencies", [])
@@ -244,6 +246,9 @@ def _install_dependencies(provider_name: str) -> None:  # noqa: PLR0912,PLR0915 
         "mem0ai": "mem0",
         "hindsight-client": "hindsight_client",
         "hindsight-all": "hindsight",
+        "google-generativeai": "google.generativeai",
+        "sentence-transformers": "sentence_transformers",
+        "scikit-learn": "sklearn",
     }
 
     missing = []
@@ -296,7 +301,8 @@ def _install_dependencies(provider_name: str) -> None:  # noqa: PLR0912,PLR0915 
         if check_cmd:
             try:
                 subprocess.run(shlex.split(check_cmd), check=True, capture_output=True, timeout=5)
-            except Exception:
+            except Exception as exc:
+                logger.debug("[multi-memory] external dep check failed for '%s': %s", dep_name, exc)
                 if install_cmd_str:
                     print(f"\n  ⚠ '{dep_name}' not found. Install with:")
                     print(f"    {install_cmd_str}")
@@ -332,8 +338,12 @@ def _write_env_vars(env_path: Path, env_writes: dict) -> None:  # pragma: no cov
         import stat
 
         env_path.chmod(stat.S_IRUSR | stat.S_IWUSR)  # 0600
-    except OSError:
-        pass
+    except OSError as exc:
+        logger.warning(
+            "[multi-memory] failed to set 0600 permissions on %s: %s — secrets may be readable",
+            env_path,
+            exc,
+        )
 
 
 # ── Interactive picker ─────────────────────────────────────────────────────
@@ -716,6 +726,8 @@ def _cmd_status(args: argparse.Namespace) -> None:  # noqa: PLR0912,PLR0915
     """Show active backends and their health/config."""
     config = load_config()
     memory_cfg = config.get("memory", {})
+    # Cache plugin discovery — called multiple times below
+    _backends_cache = _get_available_backends()
     active = _get_active_backends(memory_cfg)
     top_provider = memory_cfg.get("provider", "")
     json_out = getattr(args, "json_output", False)
@@ -752,8 +764,7 @@ def _cmd_status(args: argparse.Namespace) -> None:  # noqa: PLR0912,PLR0915
         if top_config and isinstance(top_config, dict):
             print(f"\n    ── {top_provider} ──")
             # Check for format_config_display
-            backends_list = _get_available_backends()
-            provider_obj = next((p for n, _, p in backends_list if n == top_provider), None)
+            provider_obj = next((p for n, _, p in _backends_cache if n == top_provider), None)
             if provider_obj and hasattr(provider_obj, "format_config_display"):
                 for key, val in provider_obj.format_config_display(top_config):
                     print(f"      {key}: {val}")
@@ -787,11 +798,10 @@ def _cmd_status(args: argparse.Namespace) -> None:  # noqa: PLR0912,PLR0915
                     else:
                         print(f"      {key}: {val}")
 
-            backends_list = _get_available_backends()
-            found = any(n == backend_name for n, _, _ in backends_list)
+            found = any(n == backend_name for n, _, _ in _backends_cache)
             if found:
                 print("    Plugin:       installed ✓")
-                for bname, _, bprov in backends_list:
+                for bname, _, bprov in _backends_cache:
                     if bname == backend_name and bprov:
                         if bprov.is_available():
                             print("    Status:       available ✓")
@@ -820,10 +830,9 @@ def _cmd_status(args: argparse.Namespace) -> None:  # noqa: PLR0912,PLR0915
                 print(f"    Install the '{backend_name}' plugin to ~/.hermes/plugins/")
 
     # List installed plugins
-    backends_list = _get_available_backends()
-    if backends_list:
+    if _backends_cache:
         print("\n  Installed plugins:")
-        for bname, hint, _ in backends_list:
+        for bname, hint, _ in _backends_cache:
             marker = " ← active" if bname in active else ""
             print(f"    • {bname}  ({hint}){marker}")
 

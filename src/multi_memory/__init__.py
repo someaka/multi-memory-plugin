@@ -154,6 +154,18 @@ _SUB_CLASSES = (
     _SupermemoryAdapter,
 )
 
+# Validate all adapter PREFIX attributes at import time
+from .validate import NamespaceValidator  # noqa: E402, PLC0415
+
+_validator = NamespaceValidator(list(_SUB_CLASSES))
+_prefix_warnings = _validator.validate_all()
+if _prefix_warnings:
+    logger.warning(
+        "[multi-memory] %d adapter(s) have empty PREFIX — tool name collisions possible",
+        len(_prefix_warnings),
+    )
+del _validator, _prefix_warnings  # cleanup module namespace
+
 
 def _is_disabled(value: Any) -> bool:
     """Return True if a config value means 'this backend is disabled'.
@@ -226,6 +238,7 @@ class MultiMemoryProvider(MemoryProvider):
         self._health = HealthTracker()
         self._lock = threading.RLock()
         self._load_config()
+        self._apply_budget_threshold()
 
     def __repr__(self) -> str:
         with self._lock:
@@ -255,8 +268,15 @@ class MultiMemoryProvider(MemoryProvider):
             from .config import _get_config_path  # noqa: PLC0415
 
             cfg_path = _get_config_path()
-            with open(cfg_path) as f:
-                cfg = yaml.safe_load(f) or {}
+            try:
+                with open(cfg_path) as f:
+                    cfg = yaml.safe_load(f) or {}
+            except FileNotFoundError:
+                logger.debug("[multi-memory] config not found at %s", cfg_path)
+                return
+            except (PermissionError, IsADirectoryError, yaml.YAMLError) as exc:
+                logger.warning("[multi-memory] failed to read config at %s: %s", cfg_path, exc)
+                return
             if not isinstance(cfg, dict):
                 logger.warning("[multi-memory] config.yaml is not a dict — ignoring")
                 return
@@ -289,6 +309,21 @@ class MultiMemoryProvider(MemoryProvider):
             logger.warning("[multi-memory] config load failed: %s", exc)
 
     # ─── Snapshot helper ───────────────────────────────────────────────────
+
+    def _apply_budget_threshold(self) -> None:
+        """Read tool_budget_threshold from config and apply to budget checker."""
+        from .config import _get_config_path  # noqa: PLC0415
+
+        try:
+            with open(_get_config_path()) as f:
+                cfg = yaml.safe_load(f) or {}
+        except Exception:
+            return
+        memory_cfg = cfg.get("memory", {}) if isinstance(cfg, dict) else {}
+        multi_cfg = memory_cfg.get("multi", {}) if isinstance(memory_cfg, dict) else {}
+        threshold = multi_cfg.get("tool_budget_threshold")
+        if isinstance(threshold, int) and threshold > 0:
+            self._tool_budget._threshold = threshold
 
     def _snapshot(self) -> list[_SubProviderAdapter]:
         """Return a thread-safe snapshot of active sub-providers."""
@@ -541,14 +576,33 @@ class MultiMemoryProvider(MemoryProvider):
 # ── Helpers ────────────────────────────────────────────────────────────────
 
 
-def _close_or_shutdown(sub: _SubProviderAdapter, name: str) -> None:
-    """Close or shutdown a sub-provider, preferring close()."""
-    try:
+def _close_or_shutdown(
+    sub: _SubProviderAdapter, name: str, timeout: float = 10.0
+) -> None:
+    """Close or shutdown a sub-provider, preferring close().
+
+    Runs in a separate thread with a *timeout* (default 10s) to prevent
+    a hung sub-provider from blocking shutdown indefinitely.
+    """
+    import concurrent.futures  # noqa: PLC0415
+
+    def _do_close() -> None:
         close_fn = getattr(sub, "close", None)
         if callable(close_fn):
             close_fn()
         else:
             sub.shutdown()
+
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_do_close)
+            future.result(timeout=timeout)
+    except concurrent.futures.TimeoutError:
+        logger.warning(
+            "[multi-memory] shutdown %s timed out after %.0fs — abandoned",
+            name,
+            timeout,
+        )
     except Exception as exc:
         logger.warning("[multi-memory] shutdown %s: %s", name, exc)
 

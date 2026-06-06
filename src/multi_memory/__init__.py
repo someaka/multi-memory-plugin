@@ -264,51 +264,62 @@ class MultiMemoryProvider(MemoryProvider):
         return []
 
     def _load_config(self) -> None:
-        """Read config.yaml and populate sub-adapters."""
-        try:
-            from .config import _get_config_path  # noqa: PLC0415
+        """Read config.yaml and populate sub-adapters.
 
-            cfg_path = _get_config_path()
+        Uses a recursion guard: ``_load_config`` may be re-entered
+        when ``load_memory_provider`` is called during CLI status
+        commands, because Hermes resolves the active provider from
+        config each time a provider is loaded.
+        """
+        if getattr(self, "_loading", False):
+            return
+        self._loading = True  # noqa: SIM115
+        try:
+            self.__load_config_impl()
+        finally:
+            self._loading = False
+
+    def __load_config_impl(self) -> None:
+        from .config import _get_config_path  # noqa: PLC0415
+
+        cfg_path = _get_config_path()
+        try:
+            with open(cfg_path) as f:
+                cfg = yaml.safe_load(f) or {}
+        except FileNotFoundError:
+            logger.debug("[multi-memory] config not found at %s", cfg_path)
+            return
+        except (PermissionError, IsADirectoryError, yaml.YAMLError) as exc:
+            logger.warning("[multi-memory] failed to read config at %s: %s", cfg_path, exc)
+            return
+        if not isinstance(cfg, dict):
+            logger.warning("[multi-memory] config.yaml is not a dict — ignoring")
+            return
+        candidates = _load_backends_from_config(cfg)
+        # Validate schemas BEFORE accepting — a broken backend must
+        # NOT be registered (matches fork's schema-validation-before-
+        # registration pattern from memory_manager.py).
+        validated = []
+        for adapter in candidates:
             try:
-                with open(cfg_path) as f:
-                    cfg = yaml.safe_load(f) or {}
-            except FileNotFoundError:
-                logger.debug("[multi-memory] config not found at %s", cfg_path)
-                return
-            except (PermissionError, IsADirectoryError, yaml.YAMLError) as exc:
-                logger.warning("[multi-memory] failed to read config at %s: %s", cfg_path, exc)
-                return
-            if not isinstance(cfg, dict):
-                logger.warning("[multi-memory] config.yaml is not a dict — ignoring")
-                return
-            candidates = _load_backends_from_config(cfg)
-            # Validate schemas BEFORE accepting — a broken backend must
-            # NOT be registered (matches fork's schema-validation-before-
-            # registration pattern from memory_manager.py).
-            validated = []
-            for adapter in candidates:
-                try:
-                    schemas = adapter.get_tool_schemas()
-                    validated.append(adapter)
-                    logger.info(
-                        "[multi-memory] %s validated (%d tools)", adapter.name, len(schemas)
-                    )
-                except Exception as exc:  # noqa: PERF203
-                    logger.warning(
-                        "[multi-memory] %s failed schema validation — NOT registered: %s",
-                        adapter.name,
-                        exc,
-                    )
-                    self._health.record_failure(adapter.name)
-            self._subs = validated
-            self._invalidate_schema_cache()
-            logger.info(
-                "[multi-memory] loaded %d backends: %s",
-                len(self._subs),
-                [s.name for s in self._subs],
-            )
-        except Exception as exc:
-            logger.warning("[multi-memory] config load failed: %s", exc)
+                schemas = adapter.get_tool_schemas()
+                validated.append(adapter)
+                logger.info(
+                    "[multi-memory] %s validated (%d tools)", adapter.name, len(schemas)
+                )
+            except Exception as exc:  # noqa: PERF203
+                logger.warning(
+                    "[multi-memory] %s failed schema validation — NOT registered: %s",
+                    adapter.name,
+                    exc,
+                )
+                self._health.record_failure(adapter.name)
+        self._subs = validated
+        logger.info(
+            "[multi-memory] loaded %d backends: %s",
+            len(self._subs),
+            [s.name for s in self._subs],
+        )
 
     # ─── Snapshot helper ───────────────────────────────────────────────────
 

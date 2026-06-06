@@ -190,7 +190,7 @@ def register(ctx) -> None:
     ``hermes plugins list`` and the dashboard even before
     ``memory.provider: multi`` is configured.
 
-    Gracefully degrades on older Hermes versions that lack
+    Logs a warning on older Hermes versions that lack
     ``register_cli_command`` on the PluginContext.
     """
     if hasattr(ctx, "register_memory_provider"):
@@ -237,6 +237,7 @@ class MultiMemoryProvider(MemoryProvider):
         self._tool_budget = ToolBudgetWarning()
         self._health = HealthTracker()
         self._lock = threading.RLock()
+        self._cached_schemas: list[dict] | None = None  # invalidated on mutation
         self._load_config()
         self._apply_budget_threshold()
 
@@ -300,6 +301,7 @@ class MultiMemoryProvider(MemoryProvider):
                     )
                     self._health.record_failure(adapter.name)
             self._subs = validated
+            self._invalidate_schema_cache()
             logger.info(
                 "[multi-memory] loaded %d backends: %s",
                 len(self._subs),
@@ -317,7 +319,8 @@ class MultiMemoryProvider(MemoryProvider):
         try:
             with open(_get_config_path()) as f:
                 cfg = yaml.safe_load(f) or {}
-        except Exception:
+        except Exception as exc:
+            logger.debug("[multi-memory] _apply_budget_threshold failed: %s", exc)
             return
         memory_cfg = cfg.get("memory", {}) if isinstance(cfg, dict) else {}
         multi_cfg = memory_cfg.get("multi", {}) if isinstance(memory_cfg, dict) else {}
@@ -345,8 +348,16 @@ class MultiMemoryProvider(MemoryProvider):
         for sub in self._snapshot():
             if self._health.is_open(sub.name):
                 continue
+            fn = getattr(sub, method, None)
+            if not callable(fn):
+                logger.warning(
+                    "[multi-memory] %s has no method '%s' — skipping",
+                    sub.name,
+                    method,
+                )
+                continue
             try:
-                result = getattr(sub, method)(*args, **kwargs)
+                result = fn(*args, **kwargs)
                 self._health.record_success(sub.name)
                 results.append((sub, result))
             except Exception as exc:
@@ -380,11 +391,10 @@ class MultiMemoryProvider(MemoryProvider):
     def get_tool_schemas(self) -> list[dict]:
         """Merge schemas: first-seen wins by tool name.
 
-        Takes a snapshot of active subs under the lock, then calls
-        delegates without holding it — consistent with _fan_out() and
-        safe for gateway mode where concurrent requests may call
-        get_tool_schemas() while another thread modifies the sub list.
+        Results are cached and invalidated on add/remove/reload.
         """
+        if self._cached_schemas is not None:
+            return self._cached_schemas
         subs = self._snapshot()
         schemas, seen = [], set()
         for sub in subs:
@@ -407,7 +417,12 @@ class MultiMemoryProvider(MemoryProvider):
                     schemas.append(raw)
                     seen.add(name)
         self._tool_budget.check(schemas)
+        self._cached_schemas = schemas
         return schemas
+
+    def _invalidate_schema_cache(self) -> None:
+        """Clear cached tool schemas — called after add/remove/reload."""
+        self._cached_schemas = None
 
     def handle_tool_call(self, tool_name: str, args: dict, **kwargs: Any) -> str:
         subs = self._snapshot()
@@ -461,6 +476,7 @@ class MultiMemoryProvider(MemoryProvider):
                 logger.warning("[multi-memory] add_provider: '%s' already active", adapter.name)
                 return False
             self._subs.append(adapter)
+            self._invalidate_schema_cache()
             self._health.reset(adapter.name)
         logger.info("[multi-memory] added provider '%s' (%d tools)", adapter.name, len(schemas))
         return True
@@ -479,6 +495,7 @@ class MultiMemoryProvider(MemoryProvider):
                 logger.warning("[multi-memory] remove_provider: '%s' not found", name)
                 return False
             self._subs = remaining
+            self._invalidate_schema_cache()
         # Shutdown outside lock
         _close_or_shutdown(target, name)
         self._health.reset(name)

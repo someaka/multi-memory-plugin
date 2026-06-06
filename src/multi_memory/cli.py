@@ -34,10 +34,18 @@ try:
 except ImportError:  # pragma: no cover — standalone stubs
 
     def load_config() -> dict:  # type: ignore[misc]
+        import sys
+
+        print("[multi-memory] Hermes not available — config not loaded", file=sys.stderr)
         return {}
 
     def save_config(config: dict) -> None:  # type: ignore[misc]
-        pass
+        import sys
+
+        print(
+            "[multi-memory] Hermes not available — config not saved (changes lost)",
+            file=sys.stderr,
+        )
 
 
 try:
@@ -697,7 +705,7 @@ def _prompt(label: str, default: str | None = None, secret: bool = False) -> str
 def _set_active_backends(memory_cfg: dict, names: list[str]) -> None:
     """Write backend list to both config formats."""
     memory_cfg["providers"] = list(names)
-    memory_cfg["provider"] = names[0] if names else ""
+    memory_cfg["provider"] = "multi"  # always set to multi when using this plugin
     # Also update multi.backends dict
     multi_cfg = memory_cfg.setdefault("multi", {})
     backends = multi_cfg.setdefault("backends", {})
@@ -716,7 +724,7 @@ def _remove_backend_from_config(name: str, memory_cfg: dict) -> None:
     if name in providers:
         providers.remove(name)
         memory_cfg["providers"] = providers
-        memory_cfg["provider"] = providers[0] if providers else ""
+        memory_cfg["provider"] = "multi"  # always set to multi when using this plugin
 
     multi_cfg = memory_cfg.get("multi", {})
     backends = multi_cfg.get("backends", {})
@@ -889,23 +897,21 @@ def _cmd_add(args: argparse.Namespace) -> None:
         print("\n  Usage: hermes multi add <backend>\n")
         return
 
+    if backend not in ALL_BACKENDS:
+        print(f"\n  Unknown backend: '{backend}'")
+        print("  Run 'hermes multi list' to see available backends.\n")
+        return
+
     config = load_config()
     memory_cfg = config.setdefault("memory", {})
     multi_cfg = memory_cfg.setdefault("multi", {})
     backends_dict = multi_cfg.setdefault("backends", {})
-    providers_list = memory_cfg.setdefault("providers", [])
 
     if backend in backends_dict and not _is_disabled(backends_dict[backend]):
         print(f"\n  '{backend}' is already active.\n")
         return
-    if backend in providers_list:
-        print(f"\n  '{backend}' is already in the providers list.\n")
-        return
 
     backends_dict[backend] = {}
-    if backend not in providers_list:
-        providers_list.append(backend)
-
     memory_cfg["provider"] = "multi"
 
     save_config(config)
@@ -926,16 +932,10 @@ def _cmd_remove(args: argparse.Namespace) -> None:
         print("\n  No memory config found.\n")
         return
 
-    # Check if backend is actually present in any format
-    found = False
     multi_cfg = memory_cfg.get("multi", {})
     backends_dict = multi_cfg.get("backends", {})
-    providers_list = memory_cfg.get("providers", [])
 
-    if backend in backends_dict or backend in providers_list:
-        found = True
-
-    if not found:
+    if backend not in backends_dict:
         print(f"\n  '{backend}' is not in the active config.\n")
         return
 

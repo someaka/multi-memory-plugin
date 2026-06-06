@@ -395,7 +395,7 @@ class TestConfigHelpers:
 
         memory_cfg: dict = {}
         _set_active_backends(memory_cfg, ["mnemosyne", "holographic"])
-        assert memory_cfg["provider"] == "mnemosyne"
+        assert memory_cfg["provider"] == "multi"
         assert memory_cfg["providers"] == ["mnemosyne", "holographic"]
         assert "mnemosyne" in memory_cfg["multi"]["backends"]
         assert "holographic" in memory_cfg["multi"]["backends"]
@@ -410,7 +410,7 @@ class TestConfigHelpers:
             "multi": {"backends": {"mnemosyne": {}}},
         }
         _set_active_backends(memory_cfg, [])
-        assert memory_cfg["provider"] == ""
+        assert memory_cfg["provider"] == "multi"
         assert memory_cfg["providers"] == []
 
     def test_remove_backend_from_config_both_formats(self):
@@ -426,7 +426,7 @@ class TestConfigHelpers:
         assert "mem0" not in memory_cfg["providers"]
         assert "mem0" not in memory_cfg["multi"]["backends"]
         assert "honcho" in memory_cfg["providers"]
-        assert memory_cfg["provider"] == "honcho"
+        assert memory_cfg["provider"] == "multi"
 
     def test_remove_backend_from_config_last_updates_provider(self):
         """_remove_backend_from_config resets provider when last is removed."""
@@ -438,7 +438,7 @@ class TestConfigHelpers:
             "multi": {"backends": {"honcho": {}}},
         }
         _remove_backend_from_config("honcho", memory_cfg)
-        assert memory_cfg["provider"] == ""
+        assert memory_cfg["provider"] == "multi"
 
     def test_get_active_backends_multi_format(self):
         """_get_active_backends reads multi.backends dict."""

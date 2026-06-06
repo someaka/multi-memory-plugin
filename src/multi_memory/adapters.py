@@ -311,7 +311,7 @@ class _MnemosyneAdapter(_SubProviderAdapter):
                 provider = load_memory_provider(name)
                 if provider is not None:
                     return provider
-            except Exception as exc:
+            except Exception as exc:  # noqa: PERF203
                 logger.debug(
                     "[multi-memory] load_memory_provider('%s') failed: %s", name, exc
                 )

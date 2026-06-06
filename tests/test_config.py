@@ -162,7 +162,6 @@ class TestLoadMultiConfigErrors:
     """Error paths in load_multi_config."""
 
     def test_permission_error(self, tmp_path):
-        import stat
         config_file = tmp_path / "config.yaml"
         config_file.write_text("memory:\n  provider: multi\n")
         config_file.chmod(0o000)
@@ -202,7 +201,8 @@ class TestGetEnabledBackendsEdgeCases:
     """Edge cases for get_enabled_backends."""
 
     def test_config_none_calls_loader(self):
-        with mock.patch("multi_memory.config.load_multi_config", return_value={"multi": {"backends": {"x": {}}}}):
+        ret = {"multi": {"backends": {"x": {}}}}
+        with mock.patch("multi_memory.config.load_multi_config", return_value=ret):
             result = get_enabled_backends(None)
         assert result == ["x"]
 

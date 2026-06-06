@@ -31,7 +31,8 @@ requires_holographic = pytest.mark.skipif(
 
 def timeout_wrapper(fn: Any, timeout: float = 30.0) -> Any:
     """Run *fn()* with a wall-clock timeout.  Test utility."""
-    from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FutTimeout
+    from concurrent.futures import ThreadPoolExecutor
+    from concurrent.futures import TimeoutError as _FutTimeout
 
     with ThreadPoolExecutor(max_workers=1) as pool:
         future = pool.submit(fn)

@@ -8,14 +8,13 @@ import time
 from unittest import mock
 
 import pytest
+from conftest import timeout_wrapper
 
 from multi_memory.health import (
     _CONSECUTIVE_FAILURES_TO_OPEN,
     _HALF_OPEN_COOLDOWN_SECONDS,
     HealthTracker,
 )
-
-from conftest import timeout_wrapper
 
 
 class TestHealthTracker:

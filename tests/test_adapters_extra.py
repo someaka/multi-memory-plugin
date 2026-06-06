@@ -203,6 +203,7 @@ class TestTryGenericBackend:
 
     def test_plugins_memory_not_importable(self):
         import sys
+
         from multi_memory import _try_generic_backend
 
         old = sys.modules.get("plugins.memory")

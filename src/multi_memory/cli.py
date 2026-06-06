@@ -108,7 +108,7 @@ def multi_command(args: argparse.Namespace) -> None:
 
 def _get_active_backends(memory_cfg: dict) -> list[str]:
     """Extract active backend names from memory config.
-    
+
     Reads from ``multi.backends`` dict (canonical) with fallback
     to ``providers`` list for backward compatibility.
     """

@@ -134,7 +134,6 @@ from .adapters import (
 )
 from .budget import ToolBudgetWarning
 from .health import HealthTracker
-from .validate import NamespaceValidator
 
 __all__ = [
     "MultiMemoryProvider",
@@ -167,9 +166,7 @@ def _is_disabled(value: Any) -> bool:
         return True
     if isinstance(value, str):
         return value.strip() in ("", "0", "false", "False", "no")
-    if isinstance(value, int) and value == 0:
-        return True
-    return False
+    return bool(isinstance(value, int) and value == 0)
 
 
 def register(ctx) -> None:

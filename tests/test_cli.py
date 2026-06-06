@@ -510,9 +510,9 @@ class TestCmdSetup:
         """setup <name> with unknown backend prints error."""
         args = argparse.Namespace(multi_command="setup", backend="nonexistent")
         with mock.patch("multi_memory.cli._get_available_backends",
-                         return_value=[("mnemosyne", "local", None)]):
-            with mock.patch("multi_memory.cli.load_config", return_value={}):
-                multi_command(args)
+                         return_value=[("mnemosyne", "local", None)]), \
+             mock.patch("multi_memory.cli.load_config", return_value={}):
+            multi_command(args)
         out = capsys.readouterr().out
         assert "not found" in out
 
@@ -561,7 +561,6 @@ class TestEnvVars:
     def test_write_env_vars_restricts_permissions(self, tmp_path):
         """_write_env_vars sets 0600 on .env file."""
         from multi_memory.cli import _write_env_vars
-        import stat
 
         env_path = tmp_path / ".env"
         _write_env_vars(env_path, {"KEY": "val"})

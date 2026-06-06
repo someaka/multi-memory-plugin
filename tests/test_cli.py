@@ -34,7 +34,7 @@ def parser():
 
 class TestRegisterCLI:
     def test_registers_subcommands(self, parser):
-        """register_cli adds status/list/add/remove subcommands."""
+        """register_cli adds status/list/add/remove/setup subcommands."""
         args = parser.parse_args(["multi", "status"])
         assert args.multi_command == "status"
 
@@ -47,6 +47,14 @@ class TestRegisterCLI:
 
         args = parser.parse_args(["multi", "remove", "mem0"])
         assert args.multi_command == "remove"
+        assert args.backend == "mem0"
+
+        args = parser.parse_args(["multi", "setup"])
+        assert args.multi_command == "setup"
+        assert args.backend is None
+
+        args = parser.parse_args(["multi", "setup", "mem0"])
+        assert args.multi_command == "setup"
         assert args.backend == "mem0"
 
     def test_json_flag(self, parser):
@@ -88,26 +96,29 @@ class TestCmdStatus:
             }
         }
         args = argparse.Namespace(json_output=False)
-        with mock.patch("multi_memory.cli.load_config", return_value=config):
+        with mock.patch("multi_memory.cli.load_config", return_value=config), \
+             mock.patch("multi_memory.cli.get_hermes_home", return_value="/tmp/.hermes"):
             _cmd_status(args)
         out = capsys.readouterr().out
-        assert "2 active backend" in out
         assert "mnemosyne" in out
         assert "holographic" in out
+        assert "installed" in out
 
     def test_status_providers_list_format(self, capsys):
         """status handles providers list format."""
         config = {"memory": {"providers": ["mem0", "honcho"]}}
         args = argparse.Namespace(json_output=False)
-        with mock.patch("multi_memory.cli.load_config", return_value=config):
+        with mock.patch("multi_memory.cli.load_config", return_value=config), \
+             mock.patch("multi_memory.cli.get_hermes_home", return_value="/tmp/.hermes"):
             _cmd_status(args)
         out = capsys.readouterr().out
-        assert "2 active backend" in out
         assert "mem0" in out
+        assert "honcho" in out
+        assert "Providers:" in out
 
     def test_status_json(self, capsys):
         """status --json outputs valid JSON."""
-        config = {"memory": {"multi": {"backends": {"mnemosyne": {}}}}}
+        config = {"memory": {"provider": "multi", "multi": {"backends": {"mnemosyne": {}}}}}
         args = argparse.Namespace(json_output=True)
         with mock.patch("multi_memory.cli.load_config", return_value=config):
             _cmd_status(args)
@@ -117,13 +128,14 @@ class TestCmdStatus:
         assert "mnemosyne" in data["active_backends"]
 
     def test_status_empty(self, capsys):
-        """status with no backends shows empty message."""
+        """status with no backends shows built-in only."""
         config = {"memory": {}}
         args = argparse.Namespace(json_output=False)
-        with mock.patch("multi_memory.cli.load_config", return_value=config):
+        with mock.patch("multi_memory.cli.load_config", return_value=config), \
+             mock.patch("multi_memory.cli.get_hermes_home", return_value="/tmp/.hermes"):
             _cmd_status(args)
         out = capsys.readouterr().out
-        assert "No backends configured" in out
+        assert "built-in only" in out
 
 
 # ── list ──────────────────────────────────────────────────────────────────

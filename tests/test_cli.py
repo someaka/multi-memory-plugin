@@ -150,7 +150,8 @@ class TestCmdStatus:
         out = capsys.readouterr().out
         assert "mem0" in out
         assert "honcho" in out
-        assert "Providers:" in out
+        assert "Backends:" in out
+        assert "provider not set to 'multi'" in out
 
     def test_status_json(self, capsys):
         """status --json outputs valid JSON."""

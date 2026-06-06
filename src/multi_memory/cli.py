@@ -770,6 +770,7 @@ def _cmd_status(args: argparse.Namespace) -> None:  # noqa: PLR0912,PLR0915
                     "config_format": (
                         "backends" if memory_cfg.get("multi", {}).get("backends") else "providers"
                     ),
+                    "installed_plugins": [{"name": n, "hint": h} for n, h, _ in _backends_cache],
                 },
                 indent=2,
             )
@@ -780,15 +781,20 @@ def _cmd_status(args: argparse.Namespace) -> None:  # noqa: PLR0912,PLR0915
     print("  " + "─" * 40)
     print("  Built-in:     always active")
 
-    if top_provider:
-        print(f"  Provider:     {top_provider}")
-    elif active:
-        print(f"  Providers:    {', '.join(active)}")
+    if top_provider and top_provider != "multi":
+        # Old single-provider config — deprecated
+        print(f"  Provider:     {top_provider}  ⚠ (legacy — use 'multi' instead)")
     else:
-        print("  Provider:     (none — built-in only)")
+        print("  Provider:     multi")
+        if active:
+            print(f"  Backends:     {', '.join(active)}")
+        else:
+            print("  Backends:     (none — built-in only)")
+        if not top_provider:
+            print("  ⚠ provider not set to 'multi' — run: hermes multi add <name>")
 
-    # Show top-level provider config if it has sub-config
-    if top_provider and top_provider not in active:
+    # Show top-level provider config for legacy non-multi providers
+    if top_provider and top_provider != "multi" and top_provider not in active:
         top_config = memory_cfg.get(top_provider, {})
         if top_config and isinstance(top_config, dict):
             print(f"\n    ── {top_provider} ──")

@@ -186,6 +186,8 @@ def _get_available_backends() -> list[tuple[str, str, Any]]:  # pragma: no cover
 
     results = []
     for name, _desc, _available in raw:
+        if name == "multi":
+            continue  # skip self to avoid recursion
         try:
             provider = load_memory_provider(name)
             if not provider:

@@ -307,9 +307,14 @@ class _MnemosyneAdapter(_SubProviderAdapter):
         except ImportError:
             return None
         for name in cls._DISCOVERY_NAMES:
-            provider = load_memory_provider(name)
-            if provider is not None:
-                return provider
+            try:
+                provider = load_memory_provider(name)
+                if provider is not None:
+                    return provider
+            except Exception as exc:
+                logger.debug(
+                    "[multi-memory] load_memory_provider('%s') failed: %s", name, exc
+                )
         return None
 
     @property

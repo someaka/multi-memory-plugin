@@ -273,7 +273,7 @@ class TestCmdRemove:
         assert "Usage:" in out
 
     def test_remove_last_backend(self, capsys):
-        """remove last backend resets provider to default."""
+        """remove last backend keeps provider=multi (empty multiplexer is valid)."""
         config = {
             "memory": {
                 "multi": {"backends": {"mem0": {}}},
@@ -296,6 +296,7 @@ class TestCmdRemove:
             _cmd_remove(args)
         out = capsys.readouterr().out
         assert "Removed" in out
-        assert "default" in out
-        # Provider should have been reset to 'default'
-        assert saved["memory"]["provider"] == "default"
+        assert "No backends active" in out
+        # Provider stays as 'multi' — empty multiplexer is valid, and
+        # switching to 'default' makes `hermes multi add` disappear.
+        assert saved["memory"]["provider"] == "multi"

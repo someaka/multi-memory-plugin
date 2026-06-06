@@ -157,8 +157,19 @@ _SUB_CLASSES = (
 
 
 def _is_disabled(value: Any) -> bool:
-    """Return True if a config value means 'this backend is disabled'."""
-    return value is False or value is None or value in (0, "0", "false", "False", "no")
+    """Return True if a config value means 'this backend is disabled'.
+
+    Handles YAML falsey values (False, None, 0, "false", "no"),
+    plus an empty-string or empty-dict that might appear from
+    ``hermes multi add`` setting ``backend: {}`` vs manual edits.
+    """
+    if value is False or value is None:
+        return True
+    if isinstance(value, str):
+        return value.strip() in ("", "0", "false", "False", "no")
+    if isinstance(value, int) and value == 0:
+        return True
+    return False
 
 
 def register(ctx) -> None:

@@ -580,11 +580,15 @@ class TestLifecycleHooks:
 class TestMultiMemoryProviderEdgeCases:
     """Edge cases: empty subs, error in _load_config, unhandled tool calls."""
 
-    def test_empty_provider_not_available(self):
-        """A provider with no subs is not available."""
+    def test_empty_provider_is_always_available(self):
+        """A provider with no subs is still available — an empty multiplexer
+        is valid (no-op passthrough).  Returning False when _subs is empty
+        would cause Hermes to reject the provider entirely, making
+        ``hermes multi add`` unusable after removing the last backend.
+        """
         p = MultiMemoryProvider()
         p._subs = []
-        assert p.is_available() is False
+        assert p.is_available() is True
 
     def test_get_tool_schemas_first_seen_wins(self):
         """When two subs provide the same tool name, first-seen wins."""

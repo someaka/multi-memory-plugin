@@ -5,6 +5,25 @@ All notable changes to the multi-memory plugin will be documented in this file.
 The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.2] — 2026-06-06
+
+### Fixed
+- **Plugin invisible in `hermes plugins list` and dashboard (regression)** —
+  v0.7.1 removed the general plugin symlink at `~/.hermes/plugins/multi/`
+  which the dashboard and `hermes plugins list` require for discovery.
+  Restored with `kind: standalone` in plugin.yaml which prevents the
+  `kind=exclusive` auto-coercion that the removal was trying to avoid.
+- **`logging.debug` used instead of `logger.debug` in cli.py** — discovery
+  failure messages were logged under the root logger instead of the module
+  logger. Added missing `logger = logging.getLogger(__name__)`.
+- **Tool budget warning fires on every load** — raised `DEFAULT_THRESHOLD`
+  from 20 to 40 because mnemosyne alone registers 23 tools (two backends
+  easily exceed 20).
+- **`_is_disabled()` didn't handle empty-string YAML values** — an empty
+  string value in `multi.backends` was treated as enabled. Now recognizes
+  empty strings, strings with only whitespace, and edge cases from
+  `0` as int (in addition to the existing str check).
+
 ## [0.7.0] — 2026-06-05
 
 ### Fixed

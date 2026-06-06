@@ -17,6 +17,8 @@ import logging
 
 from multi_memory import _is_disabled
 
+logger = logging.getLogger(__name__)
+
 try:
     from hermes_cli.config import load_config, save_config
 except ImportError:
@@ -148,7 +150,7 @@ def _cmd_status(args: argparse.Namespace) -> None:
         for b in discover_backends():
             backend_info[b["config_key"]] = b.get("installed", False)
     except Exception as exc:
-        logging.debug("[multi] backend discovery failed: %s", exc)
+        logger.debug("[multi] backend discovery failed: %s", exc)
 
     if json_out:
         print(

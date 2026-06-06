@@ -171,7 +171,7 @@ def _cmd_status(args: argparse.Namespace) -> None:
         return
 
     print(f"\n  Multi-Memory Provider — {len(active)} active backend(s)")
-    print(f"  Config format: {'backends dict' if backends_dict else 'providers list'}")
+    print(f"  Config format: {'backends' if backends_dict else 'providers list'}")
     print()
 
     if not active:

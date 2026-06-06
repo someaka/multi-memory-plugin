@@ -13,11 +13,16 @@ A [Hermes](https://github.com/NousResearch/hermes-agent) memory provider that ru
 ```bash
 hermes plugins install someaka/multi-memory-plugin
 hermes config set memory.provider multi
-hermes config set memory.multi.backends.holographic '{}'
-hermes config set memory.multi.backends.mnemosyne '{}'
+hermes config set memory.multi.backends.holographic true
+hermes config set memory.multi.backends.mnemosyne true
 ```
 
-Restart Hermes for the new provider to take effect.
+Restart Hermes. After restart, manage backends with `hermes multi`:
+
+```bash
+hermes multi add holographic
+hermes multi status
+```
 
 See **[CONFIG.md](CONFIG.md)** for all backends and advanced configuration.
 
@@ -48,8 +53,10 @@ cooldown doubles (up to 5 minutes).
 
 ## CLI
 
+Available after restarting Hermes:
+
 ```bash
-hermes multi status          # active backends + config format
+hermes multi status          # active backends + health
 hermes multi list            # all backends, active markers
 hermes multi add <name>      # add a backend to config
 hermes multi remove <name>   # remove a backend from config

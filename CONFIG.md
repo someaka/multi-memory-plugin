@@ -10,14 +10,13 @@ hermes config set memory.provider multi
 Add backends:
 
 ```bash
-hermes config set memory.multi.backends.holographic '{}'
-hermes config set memory.multi.backends.mnemosyne '{}'
-# or: hermes multi add holographic  (after restart)
+hermes config set memory.multi.backends.holographic true
+hermes config set memory.multi.backends.mnemosyne true
 ```
 
-Restart Hermes for the new provider to take effect.
+After restart, use `hermes multi add <name>` for a cleaner workflow.
 
-Then add backends — see formats below.
+Restart Hermes for the new provider to take effect.
 
 ---
 
@@ -25,22 +24,22 @@ Then add backends — see formats below.
 
 Two formats are supported. Both are equivalent — choose the one you prefer.
 
-### Format 1: `multi.backends` (verbose — per-backend options)
+### Format 1: `multi.backends` (per-backend options)
 
 ```yaml
 memory:
   provider: multi
   multi:
     backends:
-      mnemosyne: {}              # stdlib-only; no pip install needed
-      mem0: {}                   # requires MEM0_API_KEY in env
-      holographic: {}            # stdlib-only
-      honcho: {}                 # requires honcho-ai package
-      openviking: {}             # requires openviking + running server
-      hindsight: {}              # requires hindsight-client
-      retaindb: {}               # requires RETAINDB_API_KEY
-      byterover: {}              # requires brv CLI (npm)
-      supermemory: {}            # requires SUPERMEMORY_API_KEY
+      mnemosyne: true            # stdlib-only; no pip install needed
+      mem0: true                 # requires MEM0_API_KEY in env
+      holographic: true          # stdlib-only
+      honcho: true               # requires honcho-ai package
+      openviking: true           # requires openviking + running server
+      hindsight: true            # requires hindsight-client
+      retaindb: true             # requires RETAINDB_API_KEY
+      byterover: true            # requires brv CLI (npm)
+      supermemory: true          # requires SUPERMEMORY_API_KEY
 ```
 
 ### Format 2: `providers` list (concise)
@@ -203,18 +202,20 @@ Backends can be enabled or disabled per config by toggling their value:
 memory:
   multi:
     backends:
-      mnemosyne: {}        # enabled (empty dict = enabled)
-      mem0: false          # disabled (explicit false)
-      holographic: {}      # enabled
-      honcho: "false"      # disabled (string form also accepted)
+      mnemosyne: true         # enabled
+      mem0: false             # disabled (explicit false)
+      holographic: true       # enabled
+      honcho: "false"         # disabled (string form also accepted)
 ```
 
 A backend is treated as disabled if its value is one of:
 - `false` (YAML boolean)
 - `"false"` / `"False"` (string)
 - `"0"` (string)
+- `"no"` (string)
 - `0` (integer)
 - `null` / `~` (YAML null)
+- `""` (empty string)
 
 ---
 
@@ -250,11 +251,11 @@ tail -f ~/.hermes/logs/hermes.log | grep "multi-memory"
 
 **ImportError for a backend?** Install the missing package:
 ```bash
-pip install mem0ai         # for Mem0
-pip install honcho-ai      # for Honcho
-pip install openviking     # for OpenViking
+pip install mem0ai            # for Mem0
+pip install honcho-ai         # for Honcho
+pip install openviking        # for OpenViking
 pip install hindsight-client  # for Hindsight
-pip install supermemory    # for Supermemory
+pip install supermemory       # for Supermemory
 npm install -g byterover-cli  # for ByteRover
 ```
 

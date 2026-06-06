@@ -16,11 +16,28 @@ if _src not in sys.path:
 
 
 def _holographic_available() -> bool:
-    """Check if the holographic backend is importable."""
+    """Check if the holographic backend is importable.
+
+    Checks the import first.  If PYTHONPATH is set to include the
+    hermes-agent source tree (via ``make test`` or CI), the import
+    succeeds directly.  Otherwise falls back to checking known
+    source locations on disk without modifying sys.path — runtime
+    path manipulation inside test collection is too slow.
+    """
     try:
-        return find_spec("plugins.memory.holographic") is not None
+        if find_spec("plugins.memory.holographic") is not None:
+            return True
     except (ModuleNotFoundError, ValueError):
-        return False
+        pass
+
+    for candidate in (
+        os.path.expanduser("~/.hermes/hermes-agent"),
+        "/tmp/hermes-agent",
+    ):
+        p = os.path.join(candidate, "plugins", "memory", "holographic", "__init__.py")
+        if os.path.isfile(p):
+            return True
+    return False
 
 
 requires_holographic = pytest.mark.skipif(

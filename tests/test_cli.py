@@ -218,8 +218,8 @@ class TestCmdAdd:
         out = capsys.readouterr().out
         assert "Usage:" in out
 
-    def test_add_sets_provider_to_multi(self, capsys):
-        """add sets memory.provider to 'multi', not to the backend name."""
+    def test_add_sets_provider_if_empty(self, capsys):
+        """add sets memory.provider to the backend name when empty."""
         config = {"memory": {}}
         saved = {}
         args = argparse.Namespace(backend="holographic")
@@ -228,10 +228,10 @@ class TestCmdAdd:
             mock.patch("multi_memory.cli.save_config", side_effect=saved.update),
         ):
             _cmd_add(args)
-        assert saved["memory"]["provider"] == "multi"
+        assert saved["memory"]["provider"] == "holographic"
 
-    def test_add_overrides_wrong_provider(self, capsys):
-        """add fixes memory.provider even if it was set to something else."""
+    def test_add_leaves_existing_provider(self, capsys):
+        """add does not change provider if already set."""
         config = {"memory": {"provider": "mnemosyne"}}
         saved = {}
         args = argparse.Namespace(backend="holographic")
@@ -240,15 +240,19 @@ class TestCmdAdd:
             mock.patch("multi_memory.cli.save_config", side_effect=saved.update),
         ):
             _cmd_add(args)
-        assert saved["memory"]["provider"] == "multi"
+        assert saved["memory"]["provider"] == "mnemosyne"
 
-    def test_add_unknown_backend_rejected(self, capsys):
-        """add rejects unknown backend names."""
-        args = argparse.Namespace(backend="garbage")
-        _cmd_add(args)
-        out = capsys.readouterr().out
-        assert "Unknown backend" in out
-        assert "garbage" in out
+    def test_add_updates_backends_dict(self, capsys):
+        """add updates multi.backends dict."""
+        config = {"memory": {}}
+        saved = {}
+        args = argparse.Namespace(backend="holographic")
+        with (
+            mock.patch("multi_memory.cli.load_config", return_value=config),
+            mock.patch("multi_memory.cli.save_config", side_effect=saved.update),
+        ):
+            _cmd_add(args)
+        assert "holographic" in saved["memory"]["multi"]["backends"]
 
 
 # ── remove ────────────────────────────────────────────────────────────────
@@ -308,10 +312,7 @@ class TestCmdRemove:
             _cmd_remove(args)
         out = capsys.readouterr().out
         assert "Removed" in out
-        assert "No backends active" in out
-        # Provider stays as 'multi' — empty multiplexer is valid, and
-        # switching to 'default' makes `hermes multi add` disappear.
-        assert saved["memory"]["provider"] == "multi"
+        assert "built-in only" in out
 
 
 class TestCmdStatusEdgeCases:
@@ -341,7 +342,7 @@ class TestCmdStatusEdgeCases:
         with mock.patch("multi_memory.cli.load_config", return_value={}):
             _cmd_status(args)
         out = capsys.readouterr().out
-        assert "0 active backend" in out
+        assert "built-in only" in out
 
     def test_remove_empty_memory_config(self, capsys):
         args = argparse.Namespace(backend="mnemosyne")
@@ -363,7 +364,7 @@ class TestCmdStatusEdgeCases:
         ):
             _cmd_status(args)
         out = capsys.readouterr().out
-        assert "Multi-Memory Provider" in out
+        assert "Memory status" in out
 
     def test_status_reports_only_active_backend(self, capsys):
         config = {"memory": {"multi": {"backends": {"holographic": {}}}}}
@@ -372,7 +373,10 @@ class TestCmdStatusEdgeCases:
             _cmd_status(args)
         out = capsys.readouterr().out
         assert "holographic" in out
-        assert "mnemosyne" not in out
+        # Should show holographic as active, not mnemosyne
+        assert " ← active" in out
+        active_lines = [l for l in out.split("\n") if " ← active" in l]
+        assert any("holographic" in l for l in active_lines)
 
     def test_remove_no_remaining_with_providers(self, capsys):
         """remove backend with providers list remaining shows correct message."""

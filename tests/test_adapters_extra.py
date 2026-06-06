@@ -173,10 +173,11 @@ class TestSyncAcceptsMessages:
         assert adapter._sync_accepts_messages() is False
 
 
-class TestLoadViaDiscovery:
-    """_load_via_discovery handles errors from load_memory_provider."""
+class TestMnemosyneDiscovery:
+    """_MnemosyneAdapter handles errors from load_memory_provider gracefully."""
 
-    def test_provider_raises_exception(self):
+    def test_provider_raises_exception_falls_back_to_standard_import(self):
+        """When plugin discovery raises, the adapter falls through to super().__init__."""
         import sys
 
         class MockModule:
@@ -189,13 +190,18 @@ class TestLoadViaDiscovery:
         try:
             from multi_memory.adapters import _MnemosyneAdapter
 
-            result = _MnemosyneAdapter._load_via_discovery()
+            # super().__init__ will try 'import mnemosyne' which also fails
+            # in test env — but the RuntimeError from discovery must NOT leak.
+            # The RuntimeError from super().__init__ is expected (no mnemosyne).
+            try:
+                _MnemosyneAdapter()
+            except RuntimeError as e:
+                assert "not installed" in str(e), f"Wrong error: {e}"
         finally:
             if old is not None:
                 sys.modules["plugins.memory"] = old
             else:
                 sys.modules.pop("plugins.memory", None)
-        assert result is None
 
 
 class TestTryGenericBackend:

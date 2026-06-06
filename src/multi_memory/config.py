@@ -83,9 +83,14 @@ def get_enabled_backends(config: dict | None = None) -> list[str]:
     if isinstance(providers, list) and providers:
         return [p for p in providers if p]
 
-    # Legacy single-string format
+    # Legacy single-string format (deprecated)
     single = config.get("provider", "")
     if single and single != "multi":
+        logger.warning(
+            "[multi-memory] deprecated config format: 'provider: %s' — "
+            "use 'multi.backends' dict instead",
+            single,
+        )
         return [single]
 
     return []

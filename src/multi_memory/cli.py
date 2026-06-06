@@ -371,7 +371,9 @@ def _curses_select(
         print()
         try:
             choice = input(f"  Select [{default}]: ").strip()
-            return int(choice) if choice else default
+            idx = int(choice) if choice else default
+            # Clamp to valid range
+            return max(0, min(idx, len(items) - 1))
         except (ValueError, EOFError):
             return default
 
@@ -400,7 +402,8 @@ def _curses_checklist(
             inp = input("  Enter numbers to keep (space-separated, blank=all): ").strip()
             if not inp:
                 return sel
-            return {int(n) for n in inp.split()}
+            # Parse and clamp to valid indices
+            return {n for n in {int(x) for x in inp.split()} if 0 <= n < len(items)}
         except (ValueError, EOFError):
             return sel
 
@@ -441,8 +444,11 @@ def _cmd_setup_wizard(args: argparse.Namespace) -> None:  # noqa: PLR0912,PLR091
 
     items.append(("Built-in only", "— MEMORY.md / USER.md (default)"))
 
-    # Pre-select first active, or built-in if none
+    # Pre-select first active, or built-in if none.
+    # _offset accounts for the "Remove..." entry prepended to items.
+    _offset = 1 if remove_idx >= 0 else 0
     builtin_idx = len(items) - 1
+
     pre_selected: set[int] = set()
     for i, name in enumerate(backend_names):
         if name in active:
@@ -452,7 +458,7 @@ def _cmd_setup_wizard(args: argparse.Namespace) -> None:  # noqa: PLR0912,PLR091
         pre_selected = {builtin_idx}
 
     if remove_idx >= 0:
-        default_idx = (min(pre_selected) + 1) if pre_selected else 0
+        default_idx = (min(pre_selected) + _offset) if pre_selected else 0
     else:
         default_idx = pre_selected.pop() if len(pre_selected) == 1 else 0
 
@@ -490,9 +496,8 @@ def _cmd_setup_wizard(args: argparse.Namespace) -> None:  # noqa: PLR0912,PLR091
         print("  Restart Hermes to activate.\n")
         return
 
-    # Adjust for remove entry offset
-    if remove_idx >= 0:
-        selected -= 1
+    # Undo the "Remove..." entry offset to get the backend index
+    selected -= _offset
 
     # Built-in only
     if selected >= len(backends) or selected < 0:

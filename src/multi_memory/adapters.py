@@ -35,7 +35,7 @@ def _try_import(module: str, cls: str) -> type | None:
         mod = importlib.import_module(module)
         return getattr(mod, cls, None)
     except Exception as exc:
-        logger.debug(
+        logger.warning(
             "[multi-memory] _try_import(%s.%s) failed: %s",
             module,
             cls,
@@ -283,37 +283,23 @@ class _MnemosyneAdapter(_SubProviderAdapter):
     CONFIG_KEY = "mnemosyne"
     MODULE = "mnemosyne"
     CLASS = "MemoryProvider"
-    PREFIX = "mnemosyne"  # stdlib-backed, no extra pip deps
-
-    # Mnemosyne's install script creates the plugin directory as
-    # "hermes-mnemosyne" (not "mnemosyne"), so we search both names.
-    _DISCOVERY_NAMES = ("mnemosyne", "hermes-mnemosyne")
+    PREFIX = "mnemosyne"
 
     def __init__(self, **kwargs: Any):
-        provider = self._load_via_discovery()
+        # Prefer Hermes plugin discovery — the provider is registered by
+        # its declared name, not its directory name.
+        try:
+            from plugins.memory import load_memory_provider  # noqa: PLC0415
+
+            provider = load_memory_provider(self.CONFIG_KEY)
+        except (ImportError, Exception):
+            provider = None
         if provider is not None:
             self._delegate = provider
             self._cached_write_mode = None
             self._cached_accepts_messages = None
         else:
-            # Fallback to standard import when running outside Hermes
             super().__init__(**kwargs)
-
-    @classmethod
-    def _load_via_discovery(cls) -> Any:
-        """Try Hermes plugin discovery for each known directory name."""
-        try:
-            from plugins.memory import load_memory_provider  # noqa: PLC0415
-        except ImportError:
-            return None
-        for name in cls._DISCOVERY_NAMES:
-            try:
-                provider = load_memory_provider(name)
-                if provider is not None:
-                    return provider
-            except Exception as exc:  # noqa: PERF203
-                logger.debug("[multi-memory] load_memory_provider('%s') failed: %s", name, exc)
-        return None
 
     @property
     def name(self) -> str:

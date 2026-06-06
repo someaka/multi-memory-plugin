@@ -34,7 +34,7 @@ import yaml
 
 try:
     from tools.registry import tool_error
-except ImportError:
+except ImportError:  # pragma: no cover — standalone fallback
 
     def tool_error(msg: str) -> str:
         """Standalone fallback when Hermes tools.registry is unavailable."""
@@ -43,7 +43,7 @@ except ImportError:
 
 try:
     from agent.memory_provider import MemoryProvider
-except ImportError:
+except ImportError:  # pragma: no cover — standalone stub
     # Standalone / testing: provide a minimal base class matching the ABC
     import abc
 

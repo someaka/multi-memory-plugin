@@ -156,8 +156,8 @@ def _get_active_backends(memory_cfg: dict) -> list[str]:
 # ── Provider discovery (Hermes plugin system) ──────────────────────────────
 
 
-def _get_available_backends() -> list[tuple[str, str, Any]]:
-    # pragma: no cover — Hermes plugin system
+def _get_available_backends() -> list[tuple[str, str, Any]]:  # pragma: no cover
+    # interactive/terminal-dependent — Hermes plugin system
     """Discover installed memory backends via the Hermes plugin system.
 
     Returns list of (name, setup_hint, provider_instance) tuples.
@@ -205,8 +205,7 @@ def _get_available_backends() -> list[tuple[str, str, Any]]:
 # ── Dependency installer ───────────────────────────────────────────────────
 
 
-def _find_provider_dir(provider_name: str) -> Path | None:
-    # pragma: no cover — Hermes plugin system
+def _find_provider_dir(provider_name: str) -> Path | None:  # pragma: no cover
     """Find the plugin directory for a memory provider."""
     try:
         from plugins.memory import find_provider_dir
@@ -216,8 +215,8 @@ def _find_provider_dir(provider_name: str) -> Path | None:
         return None
 
 
-def _install_dependencies(provider_name: str) -> None:  # noqa: PLR0912,PLR0915
-    # pragma: no cover — network/fs
+def _install_dependencies(provider_name: str) -> None:  # noqa: PLR0912,PLR0915  # pragma: no cover
+    # network/fs — Hermes plugin system
     """Install pip dependencies declared in the provider's plugin.yaml."""
     import shutil
 
@@ -306,8 +305,7 @@ def _install_dependencies(provider_name: str) -> None:  # noqa: PLR0912,PLR0915
 # ── Env var manager ────────────────────────────────────────────────────────
 
 
-def _write_env_vars(env_path: Path, env_writes: dict) -> None:
-    # pragma: no cover — filesystem
+def _write_env_vars(env_path: Path, env_writes: dict) -> None:  # pragma: no cover
     """Append or update env vars in .env file, restricting permissions."""
     env_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -341,8 +339,10 @@ def _write_env_vars(env_path: Path, env_writes: dict) -> None:
 # ── Interactive picker ─────────────────────────────────────────────────────
 
 
-def _curses_select(title: str, items: list[tuple[str, str]], default: int = 0) -> int:
-    # pragma: no cover — interactive curses
+def _curses_select(
+    title: str, items: list[tuple[str, str]], default: int = 0
+) -> int:  # pragma: no cover
+    # interactive curses
     """Interactive single-select with arrow keys (curses-based).
 
     Falls back to simple numbered terminal picker if curses unavailable.
@@ -366,8 +366,10 @@ def _curses_select(title: str, items: list[tuple[str, str]], default: int = 0) -
             return default
 
 
-def _curses_checklist(title: str, items: list[str], selected: set[int] | None = None) -> set[int]:
-    # pragma: no cover — interactive curses
+def _curses_checklist(
+    title: str, items: list[str], selected: set[int] | None = None
+) -> set[int]:  # pragma: no cover
+    # interactive curses
     """Interactive multi-select checklist (curses-based).
 
     Falls back to simple space-separated terminal picker if curses unavailable.
@@ -396,8 +398,8 @@ def _curses_checklist(title: str, items: list[str], selected: set[int] | None = 
 # ── Interactive setup wizard ───────────────────────────────────────────────
 
 
-def _cmd_setup_wizard(args: argparse.Namespace) -> None:  # noqa: PLR0912,PLR0915
-    # pragma: no cover — interactive wizard
+def _cmd_setup_wizard(args: argparse.Namespace) -> None:  # noqa: PLR0912,PLR0915  # pragma: no cover
+    # interactive wizard
     """Interactive curses-based memory backend setup wizard."""
     backends = _get_available_backends()
 
@@ -495,8 +497,8 @@ def _cmd_setup_wizard(args: argparse.Namespace) -> None:  # noqa: PLR0912,PLR091
     # Config already saved by _do_backend_setup
 
 
-def _cmd_setup_backend(backend_name: str) -> None:
-    # pragma: no cover — interactive setup
+def _cmd_setup_backend(backend_name: str) -> None:  # pragma: no cover
+    # interactive setup
     """Configure a specific backend, skipping the picker."""
     backends = _get_available_backends()
     match = None
@@ -518,8 +520,8 @@ def _cmd_setup_backend(backend_name: str) -> None:
     # Config already saved by _do_backend_setup
 
 
-def _do_backend_setup(name: str, provider: Any) -> None:  # noqa: PLR0912,PLR0915
-    # pragma: no cover — interactive config
+def _do_backend_setup(name: str, provider: Any) -> None:  # noqa: PLR0912,PLR0915  # pragma: no cover
+    # interactive config
     """Run the full setup flow for a single backend."""
     _install_dependencies(name)
 

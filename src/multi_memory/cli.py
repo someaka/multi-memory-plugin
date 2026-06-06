@@ -107,14 +107,18 @@ def multi_command(args: argparse.Namespace) -> None:
 
 
 def _get_active_backends(memory_cfg: dict) -> list[str]:
-    """Extract active backend names from memory config."""
+    """Extract active backend names from memory config.
+    
+    Reads from ``multi.backends`` dict (canonical) with fallback
+    to ``providers`` list for backward compatibility.
+    """
     multi_cfg = memory_cfg.get("multi", {})
     backends_dict = multi_cfg.get("backends", {})
     providers_list = memory_cfg.get("providers", [])
 
     if backends_dict:
         return [k for k, v in backends_dict.items() if not _is_disabled(v)]
-    elif providers_list:
+    if providers_list:
         return [p for p in providers_list if p]
     return []
 
@@ -246,26 +250,15 @@ def _cmd_add(args: argparse.Namespace) -> None:
 
     config = load_config()
     memory_cfg = config.setdefault("memory", {})
-
-    # Support both config formats
     multi_cfg = memory_cfg.setdefault("multi", {})
     backends_dict = multi_cfg.setdefault("backends", {})
-    providers_list = memory_cfg.setdefault("providers", [])
 
-    # Check if already active
     if backend in backends_dict and not _is_disabled(backends_dict[backend]):
         print(f"\n  '{backend}' is already active.\n")
         return
-    if backend in providers_list:
-        print(f"\n  '{backend}' is already in the providers list.\n")
-        return
 
-    # Add to both formats
     backends_dict[backend] = {}
-    if backend not in providers_list:
-        providers_list.append(backend)
 
-    # Also set provider to 'multi' for backwards compat
     if not memory_cfg.get("provider") or memory_cfg["provider"] != "multi":
         memory_cfg["provider"] = "multi"
 
@@ -289,18 +282,15 @@ def _cmd_remove(args: argparse.Namespace) -> None:
 
     found = False
 
-    # Remove from backends dict
     multi_cfg = memory_cfg.get("multi", {})
     backends_dict = multi_cfg.get("backends", {})
     if backend in backends_dict:
         del backends_dict[backend]
         found = True
 
-    # Remove from providers list
     providers_list = memory_cfg.get("providers", [])
     if backend in providers_list:
         providers_list.remove(backend)
-        found = True
 
     if not found:
         print(f"\n  '{backend}' is not in the active config.\n")
@@ -312,9 +302,5 @@ def _cmd_remove(args: argparse.Namespace) -> None:
     if remaining:
         print(f"\n  ✓ Removed '{backend}'. Active: {', '.join(remaining)}\n")
     else:
-        # Keep provider=multi even with zero backends — an empty
-        # multiplexer is valid (no-op), and switching to 'default'
-        # makes `hermes multi add` disappear (CLI registers only for
-        # the active provider).
         print(f"\n  ✓ Removed '{backend}'. No backends active.")
         print("  Use 'hermes multi add <name>' to add one.\n")

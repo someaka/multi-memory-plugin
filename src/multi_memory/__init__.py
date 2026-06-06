@@ -335,11 +335,7 @@ class MultiMemoryProvider(MemoryProvider):
             return [s.name for s in self._subs]
 
     def is_available(self) -> bool:
-        # Always available — empty backend list is valid (no-op passthrough).
-        # Returning False when _subs is empty would cause Hermes to reject
-        # the provider entirely, making `hermes multi add` unusable after
-        # removing the last backend (the CLI subcommand disappears too).
-        return True
+        return any(sub.is_available() for sub in self._snapshot())
 
     def initialize(self, session_id: str, **kwargs: Any) -> None:
         self._fan_out("initialize", session_id=session_id, **kwargs)

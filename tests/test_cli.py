@@ -218,8 +218,8 @@ class TestCmdAdd:
         out = capsys.readouterr().out
         assert "Usage:" in out
 
-    def test_add_sets_provider_if_empty(self, capsys):
-        """add sets memory.provider to the backend name when empty."""
+    def test_add_sets_provider_to_multi(self, capsys):
+        """add always sets memory.provider to 'multi'."""
         config = {"memory": {}}
         saved = {}
         args = argparse.Namespace(backend="holographic")
@@ -228,10 +228,10 @@ class TestCmdAdd:
             mock.patch("multi_memory.cli.save_config", side_effect=saved.update),
         ):
             _cmd_add(args)
-        assert saved["memory"]["provider"] == "holographic"
+        assert saved["memory"]["provider"] == "multi"
 
-    def test_add_leaves_existing_provider(self, capsys):
-        """add does not change provider if already set."""
+    def test_add_overrides_wrong_provider(self, capsys):
+        """add corrects provider to 'multi' even if previously wrong."""
         config = {"memory": {"provider": "mnemosyne"}}
         saved = {}
         args = argparse.Namespace(backend="holographic")
@@ -240,7 +240,7 @@ class TestCmdAdd:
             mock.patch("multi_memory.cli.save_config", side_effect=saved.update),
         ):
             _cmd_add(args)
-        assert saved["memory"]["provider"] == "mnemosyne"
+        assert saved["memory"]["provider"] == "multi"
 
     def test_add_updates_backends_dict(self, capsys):
         """add updates multi.backends dict."""

@@ -844,8 +844,7 @@ def _cmd_add(args: argparse.Namespace) -> None:
     if backend not in providers_list:
         providers_list.append(backend)
 
-    if not memory_cfg.get("provider"):
-        memory_cfg["provider"] = backend
+    memory_cfg["provider"] = "multi"
 
     save_config(config)
     print(f"\n  ✓ Added '{backend}' to active backends.")

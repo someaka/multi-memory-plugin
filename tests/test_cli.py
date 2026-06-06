@@ -387,6 +387,7 @@ class TestCmdStatusEdgeCases:
 
 # ── Config helpers ──────────────────────────────────────────────────────
 
+
 class TestConfigHelpers:
     def test_set_active_backends_writes_both_formats(self):
         """_set_active_backends writes providers list and multi.backends dict."""
@@ -443,31 +444,26 @@ class TestConfigHelpers:
         """_get_active_backends reads multi.backends dict."""
         from multi_memory.cli import _get_active_backends
 
-        active = _get_active_backends({
-            "multi": {"backends": {"mnemosyne": {}, "holographic": {}}}
-        })
+        active = _get_active_backends({"multi": {"backends": {"mnemosyne": {}, "holographic": {}}}})
         assert active == ["mnemosyne", "holographic"]
 
     def test_get_active_backends_providers_format(self):
         """_get_active_backends reads providers list."""
         from multi_memory.cli import _get_active_backends
 
-        active = _get_active_backends({
-            "providers": ["mem0", "honcho"]
-        })
+        active = _get_active_backends({"providers": ["mem0", "honcho"]})
         assert active == ["mem0", "honcho"]
 
     def test_get_active_backends_respects_disabled(self):
         """_get_active_backends skips disabled backends."""
         from multi_memory.cli import _get_active_backends
 
-        active = _get_active_backends({
-            "multi": {"backends": {"mnemosyne": True, "mem0": False}}
-        })
+        active = _get_active_backends({"multi": {"backends": {"mnemosyne": True, "mem0": False}}})
         assert active == ["mnemosyne"]
 
 
 # ── Prompt helper ───────────────────────────────────────────────────────
+
 
 class TestPrompt:
     def test_prompt_returns_input(self, monkeypatch):
@@ -497,6 +493,7 @@ class TestPrompt:
 
 # ── setup command ───────────────────────────────────────────────────────
 
+
 class TestCmdSetup:
     def test_setup_no_backends(self, capsys):
         """setup with no backends available prints message."""
@@ -509,15 +506,20 @@ class TestCmdSetup:
     def test_setup_backend_not_found(self, capsys):
         """setup <name> with unknown backend prints error."""
         args = argparse.Namespace(multi_command="setup", backend="nonexistent")
-        with mock.patch("multi_memory.cli._get_available_backends",
-                         return_value=[("mnemosyne", "local", None)]), \
-             mock.patch("multi_memory.cli.load_config", return_value={}):
+        with (
+            mock.patch(
+                "multi_memory.cli._get_available_backends",
+                return_value=[("mnemosyne", "local", None)],
+            ),
+            mock.patch("multi_memory.cli.load_config", return_value={}),
+        ):
             multi_command(args)
         out = capsys.readouterr().out
         assert "not found" in out
 
 
 # ── dispatch ────────────────────────────────────────────────────────────
+
 
 class TestDispatchSetup:
     def test_dispatch_setup_calls_wizard(self):
@@ -536,6 +538,7 @@ class TestDispatchSetup:
 
 
 # ── env var writer ──────────────────────────────────────────────────────
+
 
 class TestEnvVars:
     def test_write_env_vars_creates_file(self, tmp_path):
@@ -569,6 +572,7 @@ class TestEnvVars:
 
 
 # ── find provider dir ───────────────────────────────────────────────────
+
 
 class TestFindProviderDir:
     def test_find_provider_dir_returns_none_when_discovery_unavailable(self):

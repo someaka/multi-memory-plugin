@@ -2,25 +2,20 @@
 
 ## Install
 
-**Recommended** (auto-configures everything):
-
-```bash
-git clone https://github.com/someaka/multi-memory-plugin
-cd multi-memory-plugin
-./scripts/install.sh
-```
-
-The installer creates two symlinks (for memory discovery + general plugin
-scanner), enables the plugin in `plugins.enabled`, and sets
-`memory.provider: multi` automatically.
-
-**Alternative** (manual):
-
 ```bash
 hermes plugins install someaka/multi-memory-plugin
-hermes plugins enable multi
 hermes config set memory.provider multi
 ```
+
+Add backends:
+
+```bash
+hermes config set memory.multi.backends.holographic '{}'
+hermes config set memory.multi.backends.mnemosyne '{}'
+# or: hermes multi add holographic  (after restart)
+```
+
+Restart Hermes for the new provider to take effect.
 
 Then add backends — see formats below.
 
@@ -226,16 +221,19 @@ A backend is treated as disabled if its value is one of:
 ## Development
 
 ```bash
-# Symlink for live editing (two symlinks required)
-ln -sf "$(pwd)/src/multi_memory" ~/.hermes/hermes-agent/plugins/memory/multi/
-ln -sf "$(pwd)/src/multi_memory" ~/.hermes/plugins/multi/
+# Standard install for local development
+hermes plugins install --force someaka/multi-memory-plugin
+hermes config set memory.provider multi
 
-# Or use install.sh (creates both symlinks + auto-configures)
-./scripts/install.sh
+# Or for live editing: clone and symlink
+git clone https://github.com/someaka/multi-memory-plugin
+cd multi-memory-plugin
+ln -sf "$(pwd)" ~/.hermes/plugins/multi
+hermes config set memory.provider multi
 
 # Test
-pip install -e ".[all,test]"
-python -m pytest tests/ -v
+uv sync --extra test
+uv run pytest tests/
 
 # Lint
 ruff check src/ tests/

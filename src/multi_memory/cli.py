@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 try:
     from hermes_cli.config import load_config, save_config
-except ImportError:
+except ImportError:  # pragma: no cover — standalone stubs
 
     def load_config() -> dict:  # type: ignore[misc]
         return {}
@@ -42,7 +42,7 @@ except ImportError:
 
 try:
     from hermes_constants import get_hermes_home
-except ImportError:
+except ImportError:  # pragma: no cover — standalone stubs
 
     def get_hermes_home() -> str:
         return os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes"))
@@ -50,7 +50,7 @@ except ImportError:
 
 try:
     from hermes_cli.secret_prompt import masked_secret_prompt
-except ImportError:
+except ImportError:  # pragma: no cover — standalone stubs
 
     def masked_secret_prompt(prompt: str) -> str:
         import getpass
@@ -157,6 +157,7 @@ def _get_active_backends(memory_cfg: dict) -> list[str]:
 
 
 def _get_available_backends() -> list[tuple[str, str, Any]]:
+    # pragma: no cover — Hermes plugin system
     """Discover installed memory backends via the Hermes plugin system.
 
     Returns list of (name, setup_hint, provider_instance) tuples.
@@ -205,6 +206,7 @@ def _get_available_backends() -> list[tuple[str, str, Any]]:
 
 
 def _find_provider_dir(provider_name: str) -> Path | None:
+    # pragma: no cover — Hermes plugin system
     """Find the plugin directory for a memory provider."""
     try:
         from plugins.memory import find_provider_dir
@@ -215,6 +217,7 @@ def _find_provider_dir(provider_name: str) -> Path | None:
 
 
 def _install_dependencies(provider_name: str) -> None:  # noqa: PLR0912,PLR0915
+    # pragma: no cover — network/fs
     """Install pip dependencies declared in the provider's plugin.yaml."""
     import shutil
 
@@ -304,6 +307,7 @@ def _install_dependencies(provider_name: str) -> None:  # noqa: PLR0912,PLR0915
 
 
 def _write_env_vars(env_path: Path, env_writes: dict) -> None:
+    # pragma: no cover — filesystem
     """Append or update env vars in .env file, restricting permissions."""
     env_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -338,6 +342,7 @@ def _write_env_vars(env_path: Path, env_writes: dict) -> None:
 
 
 def _curses_select(title: str, items: list[tuple[str, str]], default: int = 0) -> int:
+    # pragma: no cover — interactive curses
     """Interactive single-select with arrow keys (curses-based).
 
     Falls back to simple numbered terminal picker if curses unavailable.
@@ -362,6 +367,7 @@ def _curses_select(title: str, items: list[tuple[str, str]], default: int = 0) -
 
 
 def _curses_checklist(title: str, items: list[str], selected: set[int] | None = None) -> set[int]:
+    # pragma: no cover — interactive curses
     """Interactive multi-select checklist (curses-based).
 
     Falls back to simple space-separated terminal picker if curses unavailable.
@@ -391,6 +397,7 @@ def _curses_checklist(title: str, items: list[str], selected: set[int] | None = 
 
 
 def _cmd_setup_wizard(args: argparse.Namespace) -> None:  # noqa: PLR0912,PLR0915
+    # pragma: no cover — interactive wizard
     """Interactive curses-based memory backend setup wizard."""
     backends = _get_available_backends()
 
@@ -489,6 +496,7 @@ def _cmd_setup_wizard(args: argparse.Namespace) -> None:  # noqa: PLR0912,PLR091
 
 
 def _cmd_setup_backend(backend_name: str) -> None:
+    # pragma: no cover — interactive setup
     """Configure a specific backend, skipping the picker."""
     backends = _get_available_backends()
     match = None
@@ -511,6 +519,7 @@ def _cmd_setup_backend(backend_name: str) -> None:
 
 
 def _do_backend_setup(name: str, provider: Any) -> None:  # noqa: PLR0912,PLR0915
+    # pragma: no cover — interactive config
     """Run the full setup flow for a single backend."""
     _install_dependencies(name)
 

@@ -610,8 +610,9 @@ class TestEnvVars:
 class TestFindProviderDir:
     def test_find_provider_dir_returns_none_when_discovery_unavailable(self, monkeypatch):
         """_find_provider_dir returns None when plugin system unavailable."""
-        import sys
         import builtins
+        import sys
+
         from multi_memory.cli import _find_provider_dir
 
         # Remove cached plugins.memory so the import inside _find_provider_dir

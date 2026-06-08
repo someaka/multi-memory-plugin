@@ -19,7 +19,7 @@ class TestHealthTracker:
         ht.record_failure("backend_a")
         assert ht.consecutive_failures("backend_a") == 1
         ht.record_failure("backend_a")
-        assert ht.consecutive_failures("backend_a") == 2
+        assert ht.consecutive_failures("backend_a") == 2  # noqa: PLR2004
 
     def test_record_success_resets_counter(self):
         ht = HealthTracker()
@@ -38,7 +38,7 @@ class TestHealthTracker:
         ht.record_failure("b")
         ht.record_failure("b")
         assert ht.consecutive_failures("a") == 1
-        assert ht.consecutive_failures("b") == 2
+        assert ht.consecutive_failures("b") == 2  # noqa: PLR2004
 
     def test_reset_single_key(self):
         ht = HealthTracker()
@@ -75,4 +75,4 @@ class TestThreadSafety:
             t.join()
 
         assert not errors
-        assert ht.consecutive_failures("a") == 1000  # 10 threads × 100 each
+        assert ht.consecutive_failures("a") == 1000  # 10 threads × 100 each  # noqa: PLR2004

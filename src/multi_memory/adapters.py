@@ -310,7 +310,13 @@ class _MnemosyneAdapter(_SubProviderAdapter):
             self._cached_write_mode = None
             self._cached_accepts_messages = None
         else:
-            super().__init__(**kwargs)
+            raise RuntimeError(
+                f"[multi-memory] Mnemosyne plugin not found. "
+                "Install it with:\n"
+                "  pip install mnemosyne-memory\n"
+                "  mnemosyne-hermes install\n"
+                "Then restart Hermes."
+            )
 
     @property
     def name(self) -> str:

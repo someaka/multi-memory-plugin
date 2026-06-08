@@ -101,10 +101,12 @@ BACKENDS: dict[str, BackendDef] = {
 
 # ── Check helpers ────────────────────────────────────────────
 
+
 def _try_import(module: str, cls_name: str) -> type | None:
     """Import a class, return None if unavailable."""
     try:
         from importlib.util import find_spec
+
         if find_spec(module.split(".", maxsplit=1)[0]) is None:
             return None
         mod = importlib.import_module(module)
@@ -123,6 +125,7 @@ def _env_status(env_vars: list[str]) -> tuple[bool, str]:
             mem0_json = hermes_home / "mem0.json"
             if mem0_json.exists():
                 import json as _json
+
                 cfg = _json.loads(mem0_json.read_text())
                 if cfg.get("api_key"):
                     missing.remove("MEM0_API_KEY")
@@ -146,6 +149,7 @@ def _init_status(backend_name: str, cls: type) -> tuple[bool, str]:
 
 # ── Main ─────────────────────────────────────────────────────
 
+
 def check_backend(name: str, verbose: bool = False) -> BackendDef:
     """Run all checks for a single backend. Returns enriched def dict."""
     info = BACKENDS.get(name)
@@ -161,6 +165,7 @@ def check_backend(name: str, verbose: bool = False) -> BackendDef:
         try:
             sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
             from plugins.memory import load_memory_provider
+
             provider = load_memory_provider(name)
             cls = type(provider) if provider else None
         except Exception:

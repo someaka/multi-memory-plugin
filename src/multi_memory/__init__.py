@@ -520,10 +520,7 @@ class MultiMemoryProvider(MemoryProvider):
     def health_summary(self) -> dict[str, int]:
         """Return {backend_name: consecutive_failure_count} for all active subs."""
         with self._lock:
-            return {
-                sub.name: self._health.consecutive_failures(sub.name)
-                for sub in self._subs
-            }
+            return {sub.name: self._health.consecutive_failures(sub.name) for sub in self._subs}
 
     # ─── Optional hooks (pass-through to all active subs) ────────────────
 

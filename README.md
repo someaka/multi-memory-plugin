@@ -41,9 +41,8 @@ You tell it which ones you want. It talks to all of them whenever Hermes
 needs to remember something or look something up. The answers come back
 combined — as if they all came from one place.
 
-If one of them stops working, the plugin logs the error and keeps trying
-on every call. The others keep working fine in the meantime. Use
-`hermes multi status` to see failure counts per backend.
+If one of them stops working, the error is logged immediately and visible
+in `hermes multi status`. The other backends keep working fine.
 
 ---
 

@@ -347,7 +347,7 @@ class MultiMemoryProvider(MemoryProvider):
     ) -> list[tuple[_SubProviderAdapter, Any]]:
         """Call *method* on every active sub, returning [(sub, result), ...].
 
-        Subs with circuit open are skipped.  Exceptions are caught and logged;
+        All subs are always called.  Exceptions are caught and logged;
         results from failing subs are excluded from the return list.
 
         This eliminates the repeated fire-and-forget / collect pattern that

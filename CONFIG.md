@@ -259,7 +259,8 @@ uv sync --extra test
 uv run pytest tests/
 
 # Lint
-ruff check src/ tests/
+ruff check src/ tests/ scripts/
+ruff format --check src/ tests/ scripts/
 ```
 
 ---

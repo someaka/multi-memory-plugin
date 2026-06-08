@@ -41,9 +41,9 @@ You tell it which ones you want. It talks to all of them whenever Hermes
 needs to remember something or look something up. The answers come back
 combined — as if they all came from one place.
 
-If one of them stops working, the plugin notices and skips it. It tries
-again after a little while. If it's still broken, it waits longer next
-time. The others keep working fine in the meantime.
+If one of them stops working, the plugin logs the error and keeps trying
+on every call. The others keep working fine in the meantime. Use
+`hermes multi status` to see failure counts per backend.
 
 ---
 

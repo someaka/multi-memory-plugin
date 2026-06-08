@@ -17,8 +17,10 @@ uv run pytest tests/ -v
 ## Lint
 
 ```bash
-ruff check src/ tests/
-ruff check src/ tests/ --fix   # auto-fix
+ruff check src/ tests/ scripts/
+ruff check src/ tests/ scripts/ --fix   # auto-fix
+ruff format --check src/ tests/ scripts/
+ruff format src/ tests/ scripts/          # auto-format
 ```
 
 ## Adding a new backend
@@ -78,7 +80,7 @@ Each adapter wraps a real `MemoryProvider` and handles:
 
 `MultiMemoryProvider` handles:
 - Thread-safe snapshot dispatch (`_snapshot()`)
-- Circuit breaker per backend (`HealthTracker`)
+- Failure tracking per backend (`HealthTracker`) — reports to `hermes multi status`
 - Schema validation before registration
 - Runtime add/remove of backends
 - Lifecycle fanout (all hooks fire on all active backends)
@@ -88,11 +90,12 @@ Each adapter wraps a real `MemoryProvider` and handles:
 Every `except` block must:
 1. Capture the exception with `as exc`
 2. Log it with `logger.warning`
-3. Record failure with `self._health.record_failure(sub.name)` (for lifecycle hooks)
+3. Record failure with `self._health.record_failure(sub.name)` (for lifecycle hooks — visible via `hermes multi status`)
 
 Zero tolerance for silent failures.
 
 ## CI
 
 Runs on push to `main` and on PRs. Python 3.11, 3.12, 3.13.
-Ruff lint + pytest with 90% coverage threshold.
+Uses `astral-sh/ruff-action` for lint/format, `actions/setup-python@v6` for tests.
+Pytest with 90% coverage threshold.

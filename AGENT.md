@@ -10,7 +10,7 @@ at `~/.hermes/hermes-agent/plugins/memory/multi/`.
 
 The plugin implements the `MemoryProvider` ABC from `agent.memory_provider` in
 the Hermes core. It fans lifecycle calls across active sub-providers with
-per-provider error isolation, circuit-breaker protection (HealthTracker), and
+per-provider error isolation, failure tracking (HealthTracker), and
 thread-safe dispatch.
 
 **Key design constraint:** Hermes allows exactly one external memory provider.
@@ -25,7 +25,8 @@ responsibility, not upstream's. Zero upstream proposals needed.
 PYTHONPATH=src python3 -m pytest tests/ -v
 
 # Lint
-ruff check src/ tests/
+ruff check src/ tests/ scripts/
+ruff format --check src/ tests/ scripts/
 
 # Coverage
 PYTHONPATH=src python3 -m pytest tests/ --cov=multi_memory --cov-report=term-missing
@@ -107,7 +108,7 @@ Key methods:
 - `_subs` list mutations (add/remove provider)
 - `_snapshot()` — copies `_subs` before dispatching to prevent mid-iteration mutation
 - `shutdown()` — clears `_subs` to prevent post-shutdown calls to dead delegates
-- `initialize()` — checks circuit breaker before attempting init
+- `initialize()` — records failures for status reporting
 
 Pattern: snapshot under lock, dispatch outside lock. This prevents deadlock
 when a lifecycle callback triggers another method.
@@ -163,7 +164,7 @@ Zero tolerance for silent failures:
 **Config-time** failures (missing package, missing credentials) use
 `logger.warning` so users see them at default log levels.
 **Runtime lifecycle** failures use `logger.debug` since they're transient
-and the circuit breaker handles them.
+and the failure counter tracks them for `hermes multi status`.
 
 ## Method signatures
 
@@ -215,17 +216,17 @@ sub.method.side_effect = RuntimeError("fail")
 sub.method = lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("fail"))
 ```
 
-### Half-open circuit breaker tests
+### Failure counter tests
 
 ```python
-# Force circuit open
+# Record failures
 for _ in range(3):
     tracker.record_failure("test")
-assert tracker.is_open("test")
+assert tracker.consecutive_failures("test") == 3
 
-# Advance past cooldown
-tracker._last_failure["test"] = time.time() - 31
-assert not tracker.is_open("test")  # half-open: allows probe
+# Success resets
+tracker.record_success("test")
+assert tracker.consecutive_failures("test") == 0
 ```
 
 ## Key files
@@ -245,7 +246,7 @@ assert not tracker.is_open("test")  # half-open: allows probe
 | `tests/test_cli.py` | CLI subcommand tests |
 | `tests/test_generic_adapter.py` | `_GenericAdapter` + `_try_generic_backend()` tests |
 | `tests/test_health.py` | Failure counter, thread safety |
-| `.github/workflows/ci.yml` | CI — Python 3.11/3.12/3.13, ruff + pytest + 90% coverage |
+| `.github/workflows/ci.yml` | CI — Python 3.11/3.12/3.13, `astral-sh/ruff-action`, actions v6, pytest + 90% coverage |
 
 ## Config precedence
 

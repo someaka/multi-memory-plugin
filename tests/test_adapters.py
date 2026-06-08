@@ -1279,7 +1279,7 @@ class TestCoverageGaps:
         try:
             # When plugin loader returns None and standard import also fails,
             # the exception from the fallback (RuntimeError) is what propagates.
-            with pytest.raises(RuntimeError, match="not installed"):
+            with pytest.raises(RuntimeError, match="Mnemosyne plugin not found"):
                 _MnemosyneAdapter()
         finally:
             if old is not None:
@@ -1288,30 +1288,21 @@ class TestCoverageGaps:
                 sys.modules.pop("plugins.memory", None)
 
     def test_mnemosyne_adapter_import_error_fallback(self):
-        """_MnemosyneAdapter falls back to standard import on ImportError."""
+        """_MnemosyneAdapter raises RuntimeError when mnemosyne not installed."""
         import sys
 
-        # Mock load_memory_provider to raise ImportError to trigger fallback
-        mock_delegate = mock.MagicMock()
-        mock_delegate.name = "mnemosyne"
-        mock_cls = mock.MagicMock(return_value=mock_delegate)
         mock_pm = mock.MagicMock()
-        mock_pm.discover_memory_providers.return_value = []
         mock_pm.load_memory_provider.side_effect = ImportError("no plugins.memory")
         old = sys.modules.get("plugins.memory")
         sys.modules["plugins.memory"] = mock_pm
         try:
-            with mock.patch(
-                "multi_memory.adapters._try_import",
-                return_value=mock_cls,
-            ):
-                adapter = _MnemosyneAdapter()
+            with pytest.raises(RuntimeError, match="Mnemosyne plugin not found"):
+                _MnemosyneAdapter()
         finally:
             if old is not None:
                 sys.modules["plugins.memory"] = old
             else:
                 sys.modules.pop("plugins.memory", None)
-        assert adapter._delegate is mock_delegate
 
     def test_mnemosyne_handle_tool_call_delegates(self):
         """_MnemosyneAdapter.handle_tool_call passes full name to delegate."""

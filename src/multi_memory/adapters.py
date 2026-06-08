@@ -304,7 +304,6 @@ class _MnemosyneAdapter(_SubProviderAdapter):
                     continue
                 if provider is not None and getattr(provider, "name", dirname):
                     break
-
         if provider is not None:
             self._delegate = provider
             self._cached_write_mode = None

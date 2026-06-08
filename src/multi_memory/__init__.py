@@ -363,14 +363,6 @@ class MultiMemoryProvider(MemoryProvider):
                     method,
                 )
                 continue
-            fn = getattr(sub, method, None)
-            if not callable(fn):
-                logger.warning(
-                    "[multi-memory] %s has no method '%s' — skipping",
-                    sub.name,
-                    method,
-                )
-                continue
             try:
                 result = fn(*args, **kwargs)
                 self._health.record_success(sub.name)

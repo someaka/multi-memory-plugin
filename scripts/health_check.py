@@ -105,7 +105,7 @@ def _try_import(module: str, cls_name: str) -> type | None:
     """Import a class, return None if unavailable."""
     try:
         from importlib.util import find_spec
-        if find_spec(module.split(".")[0]) is None:
+        if find_spec(module.split(".", maxsplit=1)[0]) is None:
             return None
         mod = importlib.import_module(module)
         return getattr(mod, cls_name, None)

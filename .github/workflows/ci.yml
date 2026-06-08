@@ -22,12 +22,12 @@ jobs:
       - name: Ruff check
         uses: astral-sh/ruff-action@v1
         with:
-          args: "check src/ tests/ scripts/"
+          args: "check src/ tests/"
 
       - name: Ruff format
         uses: astral-sh/ruff-action@v1
         with:
-          args: "format --check src/ tests/ scripts/"
+          args: "format --check src/ tests/"
 
   test:
     name: "Test Python ${{ matrix.python-version }}"

@@ -41,8 +41,8 @@ You tell it which ones you want. It talks to all of them whenever Hermes
 needs to remember something or look something up. The answers come back
 combined — as if they all came from one place.
 
-If one of them stops working, the error is logged immediately and visible
-in `hermes multi status`. The other backends keep working fine.
+If one of them stops working, the error is logged immediately. The other
+backends keep working fine.
 
 ---
 

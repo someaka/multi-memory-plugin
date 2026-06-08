@@ -3,7 +3,7 @@
 Registers ``hermes multi`` subcommands for managing active memory backends.
 
 Commands:
-    hermes multi status       Show active backends and health
+    hermes multi status       Show active backends and config
     hermes multi list         List all available backends (installed vs not)
     hermes multi add <name>   Add a backend to the active config
     hermes multi remove <name>  Remove a backend from the active config
@@ -87,7 +87,7 @@ def register_cli(subparser: argparse.ArgumentParser) -> None:
     subs = subparser.add_subparsers(dest="multi_command")
 
     # hermes multi status
-    sp = subs.add_parser("status", help="Show active backends and health status")
+    sp = subs.add_parser("status", help="Show active backends and config")
     sp.add_argument(
         "--json", dest="json_output", action="store_true", help="Machine-readable JSON output"
     )
@@ -136,7 +136,7 @@ def multi_command(args: argparse.Namespace) -> None:
         print("\n  Usage: hermes multi {status|list|add|remove|setup}\n")
         print("  Manage multi-memory backends.\n")
         print("  Commands:")
-        print("    status          Show active backends and health")
+        print("    status          Show active backends and config")
         print("    list            List all known backends")
         print("    add <name>      Add a backend to config")
         print("    remove <name>   Remove a backend from config")
@@ -752,7 +752,7 @@ def _remove_backend_from_config(name: str, memory_cfg: dict) -> None:
 
 
 def _cmd_status(args: argparse.Namespace) -> None:  # noqa: PLR0912,PLR0915
-    """Show active backends and their health/config."""
+    """Show active backends and their config."""
     config = load_config()
     memory_cfg = config.get("memory", {})
     # Cache plugin discovery — called multiple times below

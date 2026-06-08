@@ -5,9 +5,9 @@ These cover previously untested paths:
 - _load_via_discovery error handling
 - _try_generic_backend error paths
 - format_config_display both shapes
-- _fan_out / get_tool_schemas always call all backends regardless of health
+- _fan_out / get_tool_schemas call all backends
 - _load_config error paths
-- health_summary + __repr__
+- __repr__
 """
 
 from __future__ import annotations
@@ -255,11 +255,11 @@ class TestFormatConfigDisplay:
         assert result == []
 
 
-class TestFanOutNeverSkips:
-    """_fan_out and get_tool_schemas call all backends regardless of health."""
+class TestFanOutDispatch:
+    """_fan_out and get_tool_schemas call all backends."""
 
-    def test_fan_out_calls_backend_with_failures(self):
-        """A backend with recorded failures is still called."""
+    def test_fan_out_calls_backend(self):
+        """_fan_out calls the method on each sub."""
         from multi_memory import MultiMemoryProvider
         from multi_memory.adapters import _SubProviderAdapter
 
@@ -269,15 +269,12 @@ class TestFanOutNeverSkips:
         sub.name = "test"
         sub.system_prompt_block.return_value = "prompt"
         p._subs.append(sub)
-        p._health.record_failure("test")
-        p._health.record_failure("test")
-        p._health.record_failure("test")
         results = p._fan_out("system_prompt_block")
         assert len(results) == 1
         assert results[0][1] == "prompt"
 
-    def test_get_tool_schemas_calls_backend_with_failures(self):
-        """A backend with recorded failures still provides schemas."""
+    def test_get_tool_schemas_calls_backend(self):
+        """get_tool_schemas merges schemas from all subs."""
         from multi_memory import MultiMemoryProvider
         from multi_memory.adapters import _SubProviderAdapter
 
@@ -287,8 +284,6 @@ class TestFanOutNeverSkips:
         sub.name = "test"
         sub.get_tool_schemas.return_value = [{"name": "test_tool"}]
         p._subs.append(sub)
-        p._health.record_failure("test")
-        p._health.record_failure("test")
         schemas = p.get_tool_schemas()
         assert schemas == [{"name": "test_tool"}]
 
@@ -308,20 +303,8 @@ class TestLoadConfigErrorPaths:
         assert p._subs == []
 
 
-class TestHealthSummaryAndRepr:
-    """health_summary and __repr__ return values."""
-
-    def test_health_summary(self):
-        from multi_memory import MultiMemoryProvider
-        from multi_memory.adapters import _SubProviderAdapter
-
-        p = MultiMemoryProvider()
-        p._subs = []
-        sub = mock.MagicMock(spec=_SubProviderAdapter)
-        sub.name = "test"
-        p._subs.append(sub)
-        summary = p.health_summary()
-        assert summary == {"test": 0}
+class TestRepr:
+    """__repr__ return values."""
 
     def test_repr(self):
         from multi_memory import MultiMemoryProvider

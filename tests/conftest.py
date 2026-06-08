@@ -5,7 +5,6 @@ from __future__ import annotations
 import os
 import sys
 from importlib.util import find_spec
-from typing import Any
 
 import pytest
 
@@ -85,16 +84,3 @@ requires_holographic = pytest.mark.skipif(
     not _holographic_available(),
     reason="holographic backend not available (requires Hermes plugins package)",
 )
-
-
-def timeout_wrapper(fn: Any, timeout: float = 30.0) -> Any:
-    """Run *fn()* with a wall-clock timeout.  Test utility."""
-    from concurrent.futures import ThreadPoolExecutor
-    from concurrent.futures import TimeoutError as _FutTimeout
-
-    with ThreadPoolExecutor(max_workers=1) as pool:
-        future = pool.submit(fn)
-        try:
-            return future.result(timeout=timeout)
-        except _FutTimeout:
-            raise TimeoutError(f"Operation timed out after {timeout}s") from None

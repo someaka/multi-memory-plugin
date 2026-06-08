@@ -773,15 +773,6 @@ class TestRuntimeManagement:
         provider.remove_provider("shutdown_only")
         sub.shutdown.assert_called_once()
 
-    def test_remove_provider_cleans_health(self, provider):
-        """remove_provider resets health tracking for the removed provider."""
-        provider._health.record_failure("holographic")
-        provider._health.record_failure("holographic")
-        assert provider._health.consecutive_failures("holographic") == 2
-        provider.remove_provider("holographic")
-        # Health counter should be reset
-        assert provider._health.consecutive_failures("holographic") == 0
-
     def test_add_then_remove_roundtrip(self, provider):
         """Full add-then-remove roundtrip works."""
         new_sub = mock.MagicMock()
@@ -1509,21 +1500,6 @@ class TestSchemaFailureProtection:
         prov._subs = [broken]
         schemas = prov.get_tool_schemas()
         assert schemas == []
-
-    def test_schema_failure_records_health(self):
-        """A failing sub-adapter's health is recorded as a failure."""
-        with (
-            mock.patch.object(MultiMemoryProvider, "_load_config"),
-        ):
-            prov = MultiMemoryProvider()
-
-        broken = mock.MagicMock()
-        broken.name = "broken"
-        broken.get_tool_schemas.side_effect = RuntimeError("boom")
-
-        prov._subs = [broken]
-        prov.get_tool_schemas()
-        assert prov._health._counters.get("broken", 0) >= 1
 
 
 class TestCloseMethod:

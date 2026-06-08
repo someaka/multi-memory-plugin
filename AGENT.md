@@ -10,7 +10,7 @@ at `~/.hermes/hermes-agent/plugins/memory/multi/`.
 
 The plugin implements the `MemoryProvider` ABC from `agent.memory_provider` in
 the Hermes core. It fans lifecycle calls across active sub-providers with
-per-provider error isolation, failure tracking (HealthTracker), and
+per-provider error isolation, and
 thread-safe dispatch.
 
 **Key design constraint:** Hermes allows exactly one external memory provider.
@@ -25,8 +25,8 @@ responsibility, not upstream's. Zero upstream proposals needed.
 PYTHONPATH=src python3 -m pytest tests/ -v
 
 # Lint
-ruff check src/ tests/ scripts/
-ruff format --check src/ tests/ scripts/
+ruff check src/ tests/
+ruff format --check src/ tests/
 
 # Coverage
 PYTHONPATH=src python3 -m pytest tests/ --cov=multi_memory --cov-report=term-missing
@@ -88,20 +88,6 @@ uses `plugins.memory.load_memory_provider()` with a fallback to `_try_import()`.
 - ByteRover: CONFIG_KEY=`byterover`, PREFIX=`brv` (tools are `brv_query`, etc.)
 - OpenViking: CONFIG_KEY=`openviking`, PREFIX=`viking` (tools are `viking_search`, etc.)
 
-## HealthTracker (failure counter)
-
-`health.py` tracks consecutive failures per backend for **status reporting
-only**.  It never gates or skips calls — all backends are always invoked.
-
-`HealthTracker` has its own `threading.Lock` — independent of
-`MultiMemoryProvider._lock` since health mutations happen during dispatch.
-
-Key methods:
-- `record_failure(name)`: increment consecutive failure count
-- `record_success(name)`: reset failure count to 0
-- `consecutive_failures(name)` → int: current failure count (0 = healthy)
-- `reset(name)`: manually clear failure count
-
 ## Thread safety
 
 `MultiMemoryProvider._lock` (RLock) protects:
@@ -154,7 +140,7 @@ fallback. It auto-installs Python dependencies from each backend's
 Every `except` block in the plugin MUST:
 1. Capture the exception with `as exc`
 2. Log it with `logger.debug` or `logger.warning`
-3. Record failure with `self._health.record_failure(sub.name)` (for lifecycle hooks)
+3. Log the error (the backend stays in the list — no exclusion)
 
 Zero tolerance for silent failures:
 - `except: pass` → forbidden
@@ -163,8 +149,7 @@ Zero tolerance for silent failures:
 
 **Config-time** failures (missing package, missing credentials) use
 `logger.warning` so users see them at default log levels.
-**Runtime lifecycle** failures use `logger.debug` since they're transient
-and the failure counter tracks them for `hermes multi status`.
+**Runtime lifecycle** failures use `logger.debug` since they're transient.
 
 ## Method signatures
 
@@ -216,18 +201,7 @@ sub.method.side_effect = RuntimeError("fail")
 sub.method = lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("fail"))
 ```
 
-### Failure counter tests
 
-```python
-# Record failures
-for _ in range(3):
-    tracker.record_failure("test")
-assert tracker.consecutive_failures("test") == 3
-
-# Success resets
-tracker.record_success("test")
-assert tracker.consecutive_failures("test") == 0
-```
 
 ## Key files
 
@@ -239,13 +213,13 @@ assert tracker.consecutive_failures("test") == 0
 | `src/multi_memory/cli.py` | `register_cli()` + `hermes multi {setup,status,list,add,remove}` + interactive curses wizard + dependency installer + env var manager + `ALL_BACKENDS` (886 lines) |
 | `src/multi_memory/config.py` | `load_multi_config()`, `get_enabled_backends()` with lazy paths |
 | `src/multi_memory/discovery.py` | `discover_backends()`, `installed_backends()` |
-| `src/multi_memory/health.py` | `HealthTracker` — per-backend consecutive failure counter for status reporting |
+
 | `src/multi_memory/validate.py` | `NamespaceValidator` — checks adapter PREFIX attributes |
 | `src/multi_memory/plugin.yaml` | Hermes plugin metadata (name: `multi`) |
 | `tests/test_adapters.py` | Adapter tests, provider tests, lifecycle hook tests |
 | `tests/test_cli.py` | CLI subcommand tests |
 | `tests/test_generic_adapter.py` | `_GenericAdapter` + `_try_generic_backend()` tests |
-| `tests/test_health.py` | Failure counter, thread safety |
+
 | `.github/workflows/ci.yml` | CI — Python 3.11/3.12/3.13, `astral-sh/ruff-action`, actions v6, pytest + 90% coverage |
 
 ## Config precedence

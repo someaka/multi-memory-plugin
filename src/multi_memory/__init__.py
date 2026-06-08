@@ -133,7 +133,6 @@ from .adapters import (
     _SupermemoryAdapter,
 )
 from .budget import ToolBudgetWarning
-from .health import HealthTracker
 
 __all__ = [
     "MultiMemoryProvider",
@@ -235,7 +234,6 @@ class MultiMemoryProvider(MemoryProvider):
     def __init__(self) -> None:
         self._subs: list[_SubProviderAdapter] = []
         self._tool_budget = ToolBudgetWarning()
-        self._health = HealthTracker()
         self._lock = threading.RLock()
         self._cached_schemas: list[dict] | None = None  # invalidated on mutation
         self._load_config()
@@ -311,7 +309,6 @@ class MultiMemoryProvider(MemoryProvider):
                     adapter.name,
                     exc,
                 )
-                self._health.record_failure(adapter.name)
         self._subs = validated
         logger.info(
             "[multi-memory] loaded %d backends: %s",
@@ -365,10 +362,8 @@ class MultiMemoryProvider(MemoryProvider):
                 continue
             try:
                 result = fn(*args, **kwargs)
-                self._health.record_success(sub.name)
                 results.append((sub, result))
             except Exception as exc:
-                self._health.record_failure(sub.name)
                 logger.warning(
                     "[multi-memory] %s::%s(): %s",
                     sub.name,
@@ -407,14 +402,12 @@ class MultiMemoryProvider(MemoryProvider):
         for sub in subs:
             try:
                 sub_schemas = sub.get_tool_schemas()
-                self._health.record_success(sub.name)
             except Exception as exc:
                 logger.warning(
                     "[multi-memory] %s get_tool_schemas() failed: %s — skipping",
                     sub.name,
                     exc,
                 )
-                self._health.record_failure(sub.name)
                 continue
             for raw in sub_schemas:
                 name = raw.get("name", "")
@@ -482,7 +475,6 @@ class MultiMemoryProvider(MemoryProvider):
                 return False
             self._subs.append(adapter)
             self._invalidate_schema_cache()
-            self._health.reset(adapter.name)
         logger.info("[multi-memory] added provider '%s' (%d tools)", adapter.name, len(schemas))
         return True
 
@@ -503,7 +495,6 @@ class MultiMemoryProvider(MemoryProvider):
             self._invalidate_schema_cache()
         # Shutdown outside lock
         _close_or_shutdown(target, name)
-        self._health.reset(name)
         logger.info("[multi-memory] removed provider '%s'", name)
         return True
 
@@ -516,11 +507,6 @@ class MultiMemoryProvider(MemoryProvider):
     def has_tool(self, tool_name: str) -> bool:
         """Return True if any active sub-provider handles this tool."""
         return tool_name in self.get_all_tool_names()
-
-    def health_summary(self) -> dict[str, int]:
-        """Return {backend_name: consecutive_failure_count} for all active subs."""
-        with self._lock:
-            return {sub.name: self._health.consecutive_failures(sub.name) for sub in self._subs}
 
     # ─── Optional hooks (pass-through to all active subs) ────────────────
 

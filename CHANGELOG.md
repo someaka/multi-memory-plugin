@@ -8,15 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.8.0] — 2026-06-08
 
 ### Changed
-- **HealthTracker stripped to failure counter** — removed circuit breaker
-  (open/half-open/backoff/cooldown). Now tracks consecutive failures per
-  backend for status reporting only. All backends are always invoked —
-  errors are logged and counted, never silently skipped.
+- **Removed HealthTracker entirely** — no failure counting, no exclusion,
+  no retry logic. The installed backends list is the truth. Errors are
+  logged at load time. If a backend fails to load, it's not in the list.
 - **`_MnemosyneAdapter` fails loud** — raises `RuntimeError` with install
   instructions instead of silent `super().__init__()` fallback when
   mnemosyne plugin is not installed.
-- **`health_summary()` returns failure counts** — `{backend: int}` instead
-  of `{backend: "ok"|"circuit_open"}`.
 - **CI upgraded** — `actions/checkout@v6`, `actions/setup-python@v6`,
   `astral-sh/ruff-action@v1`. Lint and test split into separate jobs.
   Removed `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24` hack.
@@ -26,7 +23,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Duplicate `getattr`/`callable` block in `_fan_out` (dead code from prior merge).
 - `test_cli.py` — properly mocks `builtins.__import__` for plugin discovery test.
-- `health_check.py` — ruff format compliance.
 
 ## [0.7.2] — 2026-06-06
 

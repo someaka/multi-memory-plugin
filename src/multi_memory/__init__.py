@@ -355,8 +355,6 @@ class MultiMemoryProvider(MemoryProvider):
         """
         results: list[tuple[_SubProviderAdapter, Any]] = []
         for sub in self._snapshot():
-            if self._health.is_open(sub.name):
-                continue
             fn = getattr(sub, method, None)
             if not callable(fn):
                 logger.warning(
@@ -407,8 +405,6 @@ class MultiMemoryProvider(MemoryProvider):
         subs = self._snapshot()
         schemas, seen = [], set()
         for sub in subs:
-            if self._health.is_open(sub.name):
-                continue
             try:
                 sub_schemas = sub.get_tool_schemas()
                 self._health.record_success(sub.name)
@@ -521,11 +517,11 @@ class MultiMemoryProvider(MemoryProvider):
         """Return True if any active sub-provider handles this tool."""
         return tool_name in self.get_all_tool_names()
 
-    def health_summary(self) -> dict[str, str]:
-        """Return {backend_name: 'ok' | 'circuit_open'} for all active subs."""
+    def health_summary(self) -> dict[str, int]:
+        """Return {backend_name: consecutive_failure_count} for all active subs."""
         with self._lock:
             return {
-                sub.name: ("circuit_open" if self._health.is_open(sub.name) else "ok")
+                sub.name: self._health.consecutive_failures(sub.name)
                 for sub in self._subs
             }
 

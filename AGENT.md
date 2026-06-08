@@ -87,25 +87,19 @@ uses `plugins.memory.load_memory_provider()` with a fallback to `_try_import()`.
 - ByteRover: CONFIG_KEY=`byterover`, PREFIX=`brv` (tools are `brv_query`, etc.)
 - OpenViking: CONFIG_KEY=`openviking`, PREFIX=`viking` (tools are `viking_search`, etc.)
 
-## HealthTracker (circuit breaker)
+## HealthTracker (failure counter)
 
-`health.py` implements a half-open circuit breaker with exponential backoff:
-
-1. **Closed** (normal): requests pass through. Failures increment counter.
-2. **Open** (tripped): after 3 consecutive failures, the backend is skipped.
-   Cooldown starts at 30s.
-3. **Half-open** (probe): after cooldown expires, one probe call goes through.
-   - Success → circuit closes, backoff resets to 30s.
-   - Failure → circuit re-opens, cooldown doubles (30→60→120→300s cap).
+`health.py` tracks consecutive failures per backend for **status reporting
+only**.  It never gates or skips calls — all backends are always invoked.
 
 `HealthTracker` has its own `threading.Lock` — independent of
 `MultiMemoryProvider._lock` since health mutations happen during dispatch.
 
 Key methods:
-- `is_open(name)` → bool: should we skip this backend?
-- `record_success(name)`: close circuit, reset backoff
-- `record_failure(name)`: increment failures, potentially open circuit
-- `remaining_cooldown(name)` → float: seconds until next probe allowed
+- `record_failure(name)`: increment consecutive failure count
+- `record_success(name)`: reset failure count to 0
+- `consecutive_failures(name)` → int: current failure count (0 = healthy)
+- `reset(name)`: manually clear failure count
 
 ## Thread safety
 
@@ -244,13 +238,13 @@ assert not tracker.is_open("test")  # half-open: allows probe
 | `src/multi_memory/cli.py` | `register_cli()` + `hermes multi {setup,status,list,add,remove}` + interactive curses wizard + dependency installer + env var manager + `ALL_BACKENDS` (886 lines) |
 | `src/multi_memory/config.py` | `load_multi_config()`, `get_enabled_backends()` with lazy paths |
 | `src/multi_memory/discovery.py` | `discover_backends()`, `installed_backends()` |
-| `src/multi_memory/health.py` | `HealthTracker` — half-open circuit breaker with exponential backoff, `timeout_wrapper` |
+| `src/multi_memory/health.py` | `HealthTracker` — per-backend consecutive failure counter for status reporting |
 | `src/multi_memory/validate.py` | `NamespaceValidator` — checks adapter PREFIX attributes |
 | `src/multi_memory/plugin.yaml` | Hermes plugin metadata (name: `multi`) |
 | `tests/test_adapters.py` | Adapter tests, provider tests, lifecycle hook tests |
 | `tests/test_cli.py` | CLI subcommand tests |
 | `tests/test_generic_adapter.py` | `_GenericAdapter` + `_try_generic_backend()` tests |
-| `tests/test_health.py` | Half-open recovery, thread safety, exponential backoff |
+| `tests/test_health.py` | Failure counter, thread safety |
 | `.github/workflows/ci.yml` | CI — Python 3.11/3.12/3.13, ruff + pytest + 90% coverage |
 
 ## Config precedence

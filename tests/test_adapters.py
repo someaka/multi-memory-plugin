@@ -775,14 +775,12 @@ class TestRuntimeManagement:
 
     def test_remove_provider_cleans_health(self, provider):
         """remove_provider resets health tracking for the removed provider."""
-        # Trip the circuit (default limit is 5)
-        for _ in range(5):
-            provider._health.record_failure("holographic")
-        assert provider._health.is_open("holographic")
-
+        provider._health.record_failure("holographic")
+        provider._health.record_failure("holographic")
+        assert provider._health.consecutive_failures("holographic") == 2
         provider.remove_provider("holographic")
         # Health counter should be reset
-        assert not provider._health.is_open("holographic")
+        assert provider._health.consecutive_failures("holographic") == 0
 
     def test_add_then_remove_roundtrip(self, provider):
         """Full add-then-remove roundtrip works."""

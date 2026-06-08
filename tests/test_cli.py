@@ -608,9 +608,26 @@ class TestEnvVars:
 
 
 class TestFindProviderDir:
-    def test_find_provider_dir_returns_none_when_discovery_unavailable(self):
+    def test_find_provider_dir_returns_none_when_discovery_unavailable(self, monkeypatch):
         """_find_provider_dir returns None when plugin system unavailable."""
+        import sys
+        import builtins
         from multi_memory.cli import _find_provider_dir
 
+        # Remove cached plugins.memory so the import inside _find_provider_dir
+        # actually tries to load it and hits our mock
+        for key in list(sys.modules):
+            if key == "plugins.memory" or key.startswith("plugins.memory."):
+                monkeypatch.delitem(sys.modules, key, raising=False)
+        monkeypatch.delitem(sys.modules, "plugins", raising=False)
+
+        _original_import = builtins.__import__
+
+        def _mock_import(name, *args, **kwargs):
+            if name == "plugins.memory":
+                raise ImportError("No module named 'plugins.memory'")
+            return _original_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", _mock_import)
         result = _find_provider_dir("mnemosyne")
         assert result is None

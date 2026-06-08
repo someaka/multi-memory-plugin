@@ -5,7 +5,7 @@ These cover previously untested paths:
 - _load_via_discovery error handling
 - _try_generic_backend error paths
 - format_config_display both shapes
-- _fan_out / get_tool_schemas always call all backends regardless of health
+- Circuit breaker is_open in _fan_out / get_tool_schemas
 - _load_config error paths
 - health_summary + __repr__
 """
@@ -255,11 +255,10 @@ class TestFormatConfigDisplay:
         assert result == []
 
 
-class TestFanOutNeverSkips:
-    """_fan_out and get_tool_schemas call all backends regardless of health."""
+class TestCircuitBreakerInLoop:
+    """is_open() checked in _fan_out and get_tool_schemas."""
 
-    def test_fan_out_calls_backend_with_failures(self):
-        """A backend with recorded failures is still called."""
+    def test_fan_out_skips_open_circuit(self):
         from multi_memory import MultiMemoryProvider
         from multi_memory.adapters import _SubProviderAdapter
 
@@ -267,18 +266,13 @@ class TestFanOutNeverSkips:
         p._subs = []
         sub = mock.MagicMock(spec=_SubProviderAdapter)
         sub.name = "test"
-        sub.system_prompt_block.return_value = "prompt"
+        sub.is_available.return_value = True
         p._subs.append(sub)
-        # Record failures — should NOT cause skipping
-        p._health.record_failure("test")
-        p._health.record_failure("test")
-        p._health.record_failure("test")
+        p._health._opened_at["test"] = 999999999.0
         results = p._fan_out("system_prompt_block")
-        assert len(results) == 1
-        assert results[0][1] == "prompt"
+        assert results == []
 
-    def test_get_tool_schemas_calls_backend_with_failures(self):
-        """A backend with recorded failures still provides schemas."""
+    def test_get_tool_schemas_skips_open_circuit(self):
         from multi_memory import MultiMemoryProvider
         from multi_memory.adapters import _SubProviderAdapter
 
@@ -286,12 +280,12 @@ class TestFanOutNeverSkips:
         p._subs = []
         sub = mock.MagicMock(spec=_SubProviderAdapter)
         sub.name = "test"
+        sub.is_available.return_value = True
         sub.get_tool_schemas.return_value = [{"name": "test_tool"}]
         p._subs.append(sub)
-        p._health.record_failure("test")
-        p._health.record_failure("test")
+        p._health._opened_at["test"] = 999999999.0
         schemas = p.get_tool_schemas()
-        assert schemas == [{"name": "test_tool"}]
+        assert schemas == []
 
 
 class TestLoadConfigErrorPaths:
@@ -322,7 +316,7 @@ class TestHealthSummaryAndRepr:
         sub.name = "test"
         p._subs.append(sub)
         summary = p.health_summary()
-        assert summary == {"test": 0}
+        assert summary == {"test": "ok"}
 
     def test_repr(self):
         from multi_memory import MultiMemoryProvider

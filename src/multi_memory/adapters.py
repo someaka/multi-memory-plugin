@@ -310,7 +310,7 @@ class _MnemosyneAdapter(_SubProviderAdapter):
             self._cached_accepts_messages = None
         else:
             raise RuntimeError(
-                f"[multi-memory] Mnemosyne plugin not found. "
+                "[multi-memory] Mnemosyne plugin not found. "
                 "Install it with:\n"
                 "  pip install mnemosyne-memory\n"
                 "  mnemosyne-hermes install\n"

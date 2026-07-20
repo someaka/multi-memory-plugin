@@ -24,6 +24,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Duplicate `getattr`/`callable` block in `_fan_out` (dead code from prior merge).
 - `test_cli.py` — properly mocks `builtins.__import__` for plugin discovery test.
 
+## [0.8.0] — 2026-07-20
+
+### Added
+- **`backup_paths()` fan-out** — `MultiMemoryProvider` merges and deduplicates
+  external paths from all sub-providers so `hermes backup` captures them.
+- **`get_config_schema()` / `save_config()` on adapters and provider** —
+  `hermes memory setup` no longer hits `AttributeError` or silent "no config".
+- **`load_full_config()` in `config.py`** — single config reader; `__init__.py`
+  no longer opens YAML directly.
+- **`rewound` parameter** on `on_session_switch` stub and forwarded via `**kwargs`.
+- **Standalone stub parity** — stub `MemoryProvider` now has `backup_paths()`,
+  `get_config_schema()`, `save_config()`, `rewound`.
+- **27 new API-parity tests** (`test_api_parity.py`) and **33 second-pass tests**
+  (`test_second_pass.py`) covering backup_paths, rewound, JSON error contract,
+  close() fallback, config schema forwarding, batch shutdown, and config guards.
+
+### Changed
+- **`tool_error` standalone fallback returns JSON** — matches the real Hermes
+  `tools.registry.tool_error` contract (`{"error": "..."}`).
+- **`_batch_shutdown` replaces `_close_or_shutdown`** — one shared
+  `ThreadPoolExecutor` for all subs instead of one executor per sub.
+  Empty input is a no-op. Timeout and per-sub error isolation preserved.
+- **`get_tool_schemas()` uses double-checked locking** — cache read/write
+  under `self._lock`; expensive delegate calls happen outside the lock.
+- **`_invalidate_schema_cache()` acquires the lock** — prevents TOCTOU race
+  with concurrent `get_tool_schemas()`.
+- **`_loading` guard initialized in `__init__`** — removed `getattr` hack.
+- **`_normalise_multi_config` → `_normalize_multi_config`** — consistent
+  American English naming.
+- **`_RetainDBAdapter.close()` override removed** — base class now has the
+  same `close()` → `shutdown()` fallback.
+- **CI: Python 3.10 added** to matrix (matches `requires-python >= 3.10`).
+- **CI: hermes-agent pinned** to `v2026.7.7.2` for API stability.
+- **CI: silent failure removed** — `pip install -r requirements.txt` errors
+  are now visible.
+
+### Fixed
+- **`_normalise_multi_config` crash** on non-dict `multi:` values
+  (e.g. `multi: "string"`) — added `isinstance` guard.
+- **`_is_disabled` docstring** corrected — `{}` is truthy (enabled), not
+  disabled as the old docstring implied.
+- **`_MnemosyneAdapter` truthy check** — removed always-true
+  `getattr(provider, "name", dirname)` condition.
+- **Dead `import yaml`** removed from `__init__.py` (config reading
+  consolidated into `config.py`).
+- **Dead `_loading_config = False`** module-level variable removed.
+- **Duplicate `plugin.yaml`** at repo root removed (canonical copy is
+  `src/multi_memory/plugin.yaml`).
+- **README badge** updated to Python 3.10+.
+- **CONTRIBUTING/AGENT.md** updated for CI changes and removed stale
+  `_close_or_shutdown` reference.
+
 ## [0.7.2] — 2026-06-06
 
 ### Added

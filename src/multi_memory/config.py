@@ -30,6 +30,33 @@ def _get_config_path() -> str:
     return os.path.join(_get_hermes_home(), "config.yaml")
 
 
+def load_full_config() -> dict[str, Any]:
+    """Load and parse the entire config.yaml.
+
+    Returns the raw top-level dict, or ``{}`` on any failure.
+    This is the single config reader for the plugin — all other
+    modules should use this instead of opening the file directly.
+    """
+    cfg_path = _get_config_path()
+    try:
+        with open(cfg_path, encoding="utf-8") as f:
+            cfg = yaml.safe_load(f) or {}
+    except FileNotFoundError:
+        logger.debug("[multi-memory] config not found at %s", cfg_path)
+        return {}
+    except (PermissionError, IsADirectoryError, yaml.YAMLError) as exc:
+        logger.warning("[multi-memory] failed to read config at %s: %s", cfg_path, exc)
+        return {}
+    except Exception as exc:
+        logger.warning("[multi-memory] unexpected error reading config: %s", exc)
+        return {}
+
+    if not isinstance(cfg, dict):
+        logger.warning("[multi-memory] config.yaml is not a dict — ignoring")
+        return {}
+    return cfg
+
+
 def load_multi_config() -> dict[str, Any]:
     """Load the multi-memory section from config.yaml.
 

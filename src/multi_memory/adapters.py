@@ -237,11 +237,36 @@ class _SubProviderAdapter:
         return self._cached_accepts_messages
 
     def close(self) -> None:
-        """Close underlying connections.  Override in subclasses that manage
-        their own connection pools (e.g. RetainDB SQLite thread-locals)."""
+        """Close underlying connections, falling back to ``shutdown()``.
+
+        Override in subclasses that manage their own connection pools
+        (e.g. RetainDB SQLite thread-locals).
+        """
         close_fn = getattr(self._delegate, "close", None)
         if callable(close_fn):
             close_fn()
+        else:
+            self._delegate.shutdown()
+
+    def get_config_schema(self) -> list[dict]:
+        """Forward the delegate's config schema for ``hermes memory setup``."""
+        from typing import cast  # noqa: PLC0415
+
+        fn = getattr(self._delegate, "get_config_schema", None)
+        return list(cast(list[dict], fn())) if callable(fn) else []
+
+    def save_config(self, values: dict[str, Any], hermes_home: str) -> None:
+        """Forward config writes to the delegate."""
+        fn = getattr(self._delegate, "save_config", None)
+        if callable(fn):
+            fn(values, hermes_home)
+
+    def backup_paths(self) -> list[str]:
+        """Forward external paths declared by the delegate for `hermes backup`."""
+        from typing import cast  # noqa: PLC0415
+
+        fn = getattr(self._delegate, "backup_paths", None)
+        return list(cast(list[str], fn())) if callable(fn) else []
 
 
 class _GenericAdapter(_SubProviderAdapter):
@@ -257,9 +282,11 @@ class _GenericAdapter(_SubProviderAdapter):
     PREFIX = ""  # No prefix — provider handles its own names
 
     def __init__(self, provider: Any, name: str, **kwargs: Any):
+        # Bypass _SubProviderAdapter.__init__ (which does _try_import),
+        # but replicate the cache-field init so any new cached fields
+        # added to the base class are picked up here too.
         self._delegate = provider
         self._name = name
-        # Cache introspection results — inherited from base class
         self._cached_write_mode: str | None = None
         self._cached_accepts_messages: bool | None = None
 
@@ -302,7 +329,7 @@ class _MnemosyneAdapter(_SubProviderAdapter):
                     provider = load_memory_provider(dirname)
                 except Exception:
                     continue
-                if provider is not None and getattr(provider, "name", dirname):
+                if provider is not None:
                     break
         if provider is not None:
             self._delegate = provider
@@ -375,14 +402,6 @@ class _RetainDBAdapter(_SubProviderAdapter):
     MODULE = "plugins.memory.retaindb"
     CLASS = "RetainDBMemoryProvider"
     PREFIX = "retaindb"
-
-    def close(self) -> None:
-        """Shutdown writer threads and close SQLite thread-local connections."""
-        close_fn = getattr(self._delegate, "close", None)
-        if callable(close_fn):
-            close_fn()
-        else:
-            self._delegate.shutdown()
 
 
 class _ByteRoverAdapter(_SubProviderAdapter):

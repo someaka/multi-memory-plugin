@@ -18,7 +18,7 @@ from conftest import requires_holographic
 from multi_memory import (
     MultiMemoryProvider,
     _load_backends_from_config,
-    _normalise_multi_config,
+    _normalize_multi_config,
 )
 from multi_memory.adapters import (
     _ByteRoverAdapter,
@@ -39,20 +39,20 @@ from multi_memory.adapters import (
 
 class TestNormaliseMultiConfig:
     def test_providers_list(self):
-        result = _normalise_multi_config({"providers": ["mnemosyne", "mem0"]})
+        result = _normalize_multi_config({"providers": ["mnemosyne", "mem0"]})
         assert result == {"mnemosyne": {}, "mem0": {}}
 
     def test_backends_dict(self):
         cfg = {"multi": {"backends": {"mnemosyne": False, "mem0": {"api_key": "k"}}}}
-        result = _normalise_multi_config(cfg)
+        result = _normalize_multi_config(cfg)
         assert result["mnemosyne"] is False
         assert result["mem0"] == {"api_key": "k"}
 
     def test_empty_cfg(self):
-        assert _normalise_multi_config({}) == {}
+        assert _normalize_multi_config({}) == {}
 
     def test_providers_empty_list(self):
-        assert _normalise_multi_config({"providers": []}) == {}
+        assert _normalize_multi_config({"providers": []}) == {}
 
 
 class TestLoadBackendsFromConfig:
@@ -1516,12 +1516,13 @@ class TestCloseMethod:
         mock_delegate.close.assert_called_once()
 
     def test_base_close_no_delegate_close(self):
-        """Base adapter does nothing when delegate has no close()."""
+        """Base adapter falls back to shutdown() when delegate has no close()."""
         adapter = object.__new__(_SubProviderAdapter)
-        mock_delegate = mock.MagicMock(spec=[])  # no close attribute
+        mock_delegate = mock.MagicMock(spec=["shutdown"])  # no close attribute
         adapter._delegate = mock_delegate
 
-        adapter.close()  # should not raise
+        adapter.close()
+        mock_delegate.shutdown.assert_called_once()
 
     def test_retaindb_close_calls_delegate_close(self):
         """_RetainDBAdapter.close() delegates to delegate.close()."""

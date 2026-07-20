@@ -30,15 +30,14 @@ import logging
 import threading
 from typing import Any
 
-import yaml
-
 try:
     from tools.registry import tool_error
 except ImportError:  # pragma: no cover — standalone fallback
+    import json as _json
 
     def tool_error(msg: str) -> str:
-        """Standalone fallback when Hermes tools.registry is unavailable."""
-        return f"[multi-memory] ERROR: {msg}"
+        """Standalone fallback — returns JSON matching Hermes tool_error contract."""
+        return _json.dumps({"error": f"[multi-memory] {msg}"})
 
 
 try:
@@ -92,6 +91,7 @@ except ImportError:  # pragma: no cover — standalone stub
             *,
             parent_session_id: str = "",
             reset: bool = False,
+            rewound: bool = False,
             **kwargs: Any,
         ) -> None:
             pass
@@ -117,6 +117,15 @@ except ImportError:  # pragma: no cover — standalone stub
 
         def on_pre_compress(self, messages: list[dict]) -> str:
             return ""
+
+        def get_config_schema(self) -> list[dict]:
+            return []
+
+        def save_config(self, values: dict, hermes_home: str) -> None:  # noqa: B027
+            pass
+
+        def backup_paths(self) -> list[str]:
+            return []
 
 
 from .adapters import (
@@ -169,9 +178,12 @@ del _validator, _prefix_warnings  # cleanup module namespace
 def _is_disabled(value: Any) -> bool:
     """Return True if a config value means 'this backend is disabled'.
 
-    Handles YAML falsey values (False, None, 0, "false", "no"),
-    plus an empty-string or empty-dict that might appear from
-    ``hermes multi add`` setting ``backend: {}`` vs manual edits.
+    Handles YAML falsey values: False, None, 0, and the strings
+    "", "0", "false", "False", "no".
+
+    Note: an empty dict ``{}`` is truthy and means *enabled* — this is
+    the canonical "enabled with no extra config" representation written
+    by ``hermes multi add``.
     """
     if value is False or value is None:
         return True
@@ -236,8 +248,8 @@ class MultiMemoryProvider(MemoryProvider):
         self._tool_budget = ToolBudgetWarning()
         self._lock = threading.RLock()
         self._cached_schemas: list[dict] | None = None  # invalidated on mutation
+        self._loading = False  # re-entrancy guard for _load_config
         self._load_config()
-        self._apply_budget_threshold()
 
     def __repr__(self) -> str:
         with self._lock:
@@ -264,35 +276,34 @@ class MultiMemoryProvider(MemoryProvider):
     def _load_config(self) -> None:
         """Read config.yaml and populate sub-adapters.
 
-        Uses a recursion guard: ``_load_config`` may be re-entered
+        Uses a recursion guard: ``_load_config`` may be re-enterd
         when ``load_memory_provider`` is called during CLI status
         commands, because Hermes resolves the active provider from
         config each time a provider is loaded.
         """
-        if getattr(self, "_loading", False):
+        if self._loading:
             return
-        self._loading = True  # noqa: SIM115
+        self._loading = True
         try:
             self.__load_config_impl()
         finally:
             self._loading = False
 
     def __load_config_impl(self) -> None:
-        from .config import _get_config_path  # noqa: PLC0415
+        from .config import load_full_config  # noqa: PLC0415
 
-        cfg_path = _get_config_path()
-        try:
-            with open(cfg_path) as f:
-                cfg = yaml.safe_load(f) or {}
-        except FileNotFoundError:
-            logger.debug("[multi-memory] config not found at %s", cfg_path)
+        cfg = load_full_config()
+        if not cfg:
             return
-        except (PermissionError, IsADirectoryError, yaml.YAMLError) as exc:
-            logger.warning("[multi-memory] failed to read config at %s: %s", cfg_path, exc)
-            return
-        if not isinstance(cfg, dict):
-            logger.warning("[multi-memory] config.yaml is not a dict — ignoring")
-            return
+
+        # Apply budget threshold from the config we already read (single read)
+        memory_cfg = cfg.get("memory", {})
+        multi_cfg = memory_cfg.get("multi", {}) if isinstance(memory_cfg, dict) else {}
+        threshold = multi_cfg.get("tool_budget_threshold")
+        if isinstance(threshold, int) and threshold > 0:
+            with self._lock:
+                self._tool_budget._threshold = threshold
+
         candidates = _load_backends_from_config(cfg)
         # Validate schemas BEFORE accepting — a broken backend must
         # NOT be registered (matches fork's schema-validation-before-
@@ -317,22 +328,6 @@ class MultiMemoryProvider(MemoryProvider):
         )
 
     # ─── Snapshot helper ───────────────────────────────────────────────────
-
-    def _apply_budget_threshold(self) -> None:
-        """Read tool_budget_threshold from config and apply to budget checker."""
-        from .config import _get_config_path  # noqa: PLC0415
-
-        try:
-            with open(_get_config_path()) as f:
-                cfg = yaml.safe_load(f) or {}
-        except Exception as exc:
-            logger.debug("[multi-memory] _apply_budget_threshold failed: %s", exc)
-            return
-        memory_cfg = cfg.get("memory", {}) if isinstance(cfg, dict) else {}
-        multi_cfg = memory_cfg.get("multi", {}) if isinstance(memory_cfg, dict) else {}
-        threshold = multi_cfg.get("tool_budget_threshold")
-        if isinstance(threshold, int) and threshold > 0:
-            self._tool_budget._threshold = threshold
 
     def _snapshot(self) -> list[_SubProviderAdapter]:
         """Return a thread-safe snapshot of active sub-providers."""
@@ -394,9 +389,14 @@ class MultiMemoryProvider(MemoryProvider):
         """Merge schemas: first-seen wins by tool name.
 
         Results are cached and invalidated on add/remove/reload.
+        Uses double-checked locking: the cache check is under the lock,
+        the expensive delegate calls happen outside it, and the result
+        is stored under the lock with a second check to avoid races.
         """
-        if self._cached_schemas is not None:
-            return self._cached_schemas
+        with self._lock:
+            if self._cached_schemas is not None:
+                return self._cached_schemas
+        # Build outside lock — delegate calls may be slow
         subs = self._snapshot()
         schemas, seen = [], set()
         for sub in subs:
@@ -415,12 +415,15 @@ class MultiMemoryProvider(MemoryProvider):
                     schemas.append(raw)
                     seen.add(name)
         self._tool_budget.check(schemas)
-        self._cached_schemas = schemas
-        return schemas
+        with self._lock:
+            if self._cached_schemas is None:
+                self._cached_schemas = schemas
+            return self._cached_schemas
 
     def _invalidate_schema_cache(self) -> None:
         """Clear cached tool schemas — called after add/remove/reload."""
-        self._cached_schemas = None
+        with self._lock:
+            self._cached_schemas = None
 
     def handle_tool_call(self, tool_name: str, args: dict, **kwargs: Any) -> str:
         subs = self._snapshot()
@@ -494,7 +497,7 @@ class MultiMemoryProvider(MemoryProvider):
             self._subs = remaining
             self._invalidate_schema_cache()
         # Shutdown outside lock
-        _close_or_shutdown(target, name)
+        _batch_shutdown([target])
         logger.info("[multi-memory] removed provider '%s'", name)
         return True
 
@@ -512,8 +515,8 @@ class MultiMemoryProvider(MemoryProvider):
 
     def shutdown(self) -> None:
         subs = self._snapshot()
-        for sub in reversed(subs):
-            _close_or_shutdown(sub, sub.name)
+        if subs:
+            _batch_shutdown(subs)
         # Clear subs so post-shutdown calls don't hit dead delegates
         with self._lock:
             self._subs.clear()
@@ -577,40 +580,73 @@ class MultiMemoryProvider(MemoryProvider):
         parts = [f"[{sub.name}] {r}" for sub, r in results if r]
         return "\n\n".join(parts) if parts else ""
 
+    def backup_paths(self) -> list[str]:
+        """Merge and deduplicate external paths from all sub-providers."""
+        from typing import cast  # noqa: PLC0415
+
+        paths: list[str] = []
+        for sub in self._snapshot():
+            fn = getattr(sub, "backup_paths", None)
+            if callable(fn):
+                try:
+                    paths.extend(cast(list[str], fn()))
+                except Exception as exc:
+                    logger.warning("[multi-memory] %s backup_paths() failed: %s", sub.name, exc)
+        return list(dict.fromkeys(paths))
+
+    def get_config_schema(self) -> list[dict]:
+        """The multi provider itself has no config schema.
+
+        Individual backends expose their own schemas via
+        ``hermes multi setup <name>``.
+        """
+        return []
+
+    def save_config(self, values: dict[str, Any], hermes_home: str) -> None:
+        """No-op — the multi provider writes to config.yaml via the CLI."""
+
 
 # ── Helpers ────────────────────────────────────────────────────────────────
 
 
-def _close_or_shutdown(sub: _SubProviderAdapter, name: str, timeout: float = 10.0) -> None:
-    """Close or shutdown a sub-provider, preferring close().
+def _close_one(sub: _SubProviderAdapter) -> None:
+    """Close or shutdown a single sub-provider, preferring close()."""
+    close_fn = getattr(sub, "close", None)
+    if callable(close_fn):
+        close_fn()
+    else:
+        sub.shutdown()
 
-    Runs in a separate thread with a *timeout* (default 10s) to prevent
-    a hung sub-provider from blocking shutdown indefinitely.
+
+def _batch_shutdown(subs: list[_SubProviderAdapter], timeout: float = 10.0) -> None:
+    """Shutdown all sub-providers concurrently with a shared executor and timeout.
+
+    Runs in reverse order (last-added first). Each sub gets *timeout* seconds;
+    a hung sub is abandoned with a warning rather than blocking the caller.
+    No-op when *subs* is empty.
     """
+    if not subs:
+        return
     import concurrent.futures  # noqa: PLC0415
 
-    def _do_close() -> None:
-        close_fn = getattr(sub, "close", None)
-        if callable(close_fn):
-            close_fn()
-        else:
-            sub.shutdown()
-
-    try:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(_do_close)
-            future.result(timeout=timeout)
-    except concurrent.futures.TimeoutError:
-        logger.warning(
-            "[multi-memory] shutdown %s timed out after %.0fs — abandoned",
-            name,
-            timeout,
-        )
-    except Exception as exc:
-        logger.warning("[multi-memory] shutdown %s: %s", name, exc)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(subs), 4)) as executor:
+        futures = {executor.submit(_close_one, sub): sub for sub in reversed(subs)}
+        done, not_done = concurrent.futures.wait(futures, timeout=timeout)
+        for future in not_done:
+            sub = futures[future]
+            logger.warning(
+                "[multi-memory] shutdown %s timed out after %.0fs — abandoned",
+                sub.name,
+                timeout,
+            )
+        for future in done:
+            exc = future.exception()
+            if exc is not None:
+                sub = futures[future]
+                logger.warning("[multi-memory] shutdown %s: %s", sub.name, exc)
 
 
-def _normalise_multi_config(cfg: dict | None) -> dict:
+def _normalize_multi_config(cfg: dict | None) -> dict:
     """Return a unified backends dict from *either* config shape.
 
     INVESTIGATION-C canonical  -  ``providers: list[str]`` (fork format)
@@ -623,6 +659,8 @@ def _normalise_multi_config(cfg: dict | None) -> dict:
     if not isinstance(cfg, dict):
         return {}
     multi_cfg = cfg.get("multi") or {}
+    if not isinstance(multi_cfg, dict):
+        return {}
     backends = multi_cfg.get("backends") or {}
     if isinstance(backends, dict) and backends:
         return backends
@@ -636,11 +674,11 @@ def _load_backends_from_config(config: dict) -> list[_SubProviderAdapter]:
     """Return list of instantiated _SubProviderAdapter from config.
 
     Accepts both INVESTIGATION-C format (``providers: list[str]``) and
-    PLAN spec format (``multi.backends: dict``).  ``_normalise_multi_config``
+    PLAN spec format (``multi.backends: dict``).  ``_normalize_multi_config``
     merges both into a single ``{key: enabled}`` dict before adapter loading.
     """
     backends: list[_SubProviderAdapter] = []
-    backend_cfg = _normalise_multi_config(config.get("memory") or {})
+    backend_cfg = _normalize_multi_config(config.get("memory") or {})
     for key, enabled in backend_cfg.items():
         if _is_disabled(enabled):
             continue
@@ -713,6 +751,3 @@ def _try_generic_backend(name: str, backends: list[_SubProviderAdapter]) -> None
             name,
             exc,
         )
-
-
-_loading_config = False

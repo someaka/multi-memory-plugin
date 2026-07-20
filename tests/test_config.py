@@ -6,7 +6,7 @@ from unittest import mock
 
 from conftest import requires_holographic
 
-from multi_memory import _load_backends_from_config, _normalise_multi_config
+from multi_memory import _load_backends_from_config, _normalize_multi_config
 from multi_memory.config import get_enabled_backends, load_multi_config
 
 
@@ -14,15 +14,15 @@ class TestNormaliseMultiConfig:
     """Additional edge cases beyond the basic tests in test_adapters."""
 
     def test_none_cfg(self):
-        assert _normalise_multi_config(None) == {}
+        assert _normalize_multi_config(None) == {}
 
     def test_providers_list_with_single(self):
-        result = _normalise_multi_config({"providers": ["holographic"]})
+        result = _normalize_multi_config({"providers": ["holographic"]})
         assert result == {"holographic": {}}
 
     def test_both_formats_backends_wins(self):
         """multi.backends dict wins over providers list when both present (canonical format)."""
-        result = _normalise_multi_config(
+        result = _normalize_multi_config(
             {
                 "providers": ["holographic"],
                 "multi": {"backends": {"mnemosyne": {}}},
@@ -32,7 +32,7 @@ class TestNormaliseMultiConfig:
 
     def test_providers_not_a_list(self):
         """providers that isn't a list triggers multi.backends fallback."""
-        result = _normalise_multi_config(
+        result = _normalize_multi_config(
             {
                 "providers": "not-a-list",
                 "multi": {"backends": {"mnemosyne": {}}},
@@ -41,11 +41,11 @@ class TestNormaliseMultiConfig:
         assert result == {"mnemosyne": {}}
 
     def test_missing_multi_key(self):
-        result = _normalise_multi_config({"memory": {"key": "val"}})
+        result = _normalize_multi_config({"memory": {"key": "val"}})
         assert result == {}
 
     def test_backends_not_a_dict(self):
-        result = _normalise_multi_config(
+        result = _normalize_multi_config(
             {
                 "multi": {"backends": "not-a-dict"},
             }

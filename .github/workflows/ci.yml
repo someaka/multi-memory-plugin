@@ -36,7 +36,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12", "3.13"]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
 
     steps:
       - uses: actions/checkout@v6
@@ -48,9 +48,10 @@ jobs:
           cache: pip
           cache-dependency-path: pyproject.toml
 
-      - name: Install hermes-agent (for bundled memory plugins)
+      - name: Install hermes-agent (pinned for MemoryProvider API stability)
         run: |
-          git clone --depth=1 https://github.com/NousResearch/hermes-agent.git /tmp/hermes-agent
+          git clone --depth=1 --branch v2026.7.7.2 \
+            https://github.com/NousResearch/hermes-agent.git /tmp/hermes-agent
           echo "HERMES_AGENT_PATH=/tmp/hermes-agent" >> "$GITHUB_ENV"
           echo "/tmp/hermes-agent" >> "$GITHUB_PATH"
 
@@ -58,11 +59,11 @@ jobs:
         run: |
           python -m pip install --upgrade pip setuptools wheel
           pip install -e ".[all,test]"
-          # Install hermes-agent deps needed by bundled memory plugins
-          pip install -r /tmp/hermes-agent/requirements.txt 2>/dev/null || true
+          pip install -r /tmp/hermes-agent/requirements.txt
 
       - name: Run tests with coverage
         env:
           PYTHONPATH: "/tmp/hermes-agent:${{ github.workspace }}/src"
         run: |
-          python -m pytest tests/ -v --tb=short --cov=multi_memory --cov-report=term-missing --cov-fail-under=90
+          python -m pytest tests/ -v --tb=short \
+            --cov=multi_memory --cov-report=term-missing --cov-fail-under=90

@@ -207,11 +207,11 @@ sub.method = lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("fail"))
 
 | File | Purpose |
 |------|---------|
-| `src/multi_memory/__init__.py` | `register()` entry point, `MultiMemoryProvider` (568 lines), `_snapshot()`, `_close_or_shutdown()`, `_is_disabled()`, `_fan_out()`, `_try_generic_backend()`, `__repr__` |
-| `src/multi_memory/adapters.py` | `_SubProviderAdapter` base + `_renorm_schemas()` + cached introspection + 9 hardcoded adapters + `_GenericAdapter` (396 lines) |
+| `src/multi_memory/__init__.py` | `register()` entry point, `MultiMemoryProvider`, `_snapshot()`, `_batch_shutdown()`, `_is_disabled()`, `_fan_out()`, `_try_generic_backend()`, `__repr__` |
+| `src/multi_memory/adapters.py` | `_SubProviderAdapter` base + `_renorm_schemas()` + cached introspection + 9 hardcoded adapters + `_GenericAdapter` |
 | `src/multi_memory/budget.py` | `ToolBudgetWarning` — warns when schema count exceeds threshold |
-| `src/multi_memory/cli.py` | `register_cli()` + `hermes multi {setup,status,list,add,remove}` + interactive curses wizard + dependency installer + env var manager + `ALL_BACKENDS` (886 lines) |
-| `src/multi_memory/config.py` | `load_multi_config()`, `get_enabled_backends()` with lazy paths |
+| `src/multi_memory/cli.py` | `register_cli()` + `hermes multi {setup,status,list,add,remove}` + interactive curses wizard + dependency installer + env var manager + `ALL_BACKENDS` |
+| `src/multi_memory/config.py` | `load_full_config()`, `load_multi_config()`, `get_enabled_backends()` with lazy paths |
 | `src/multi_memory/discovery.py` | `discover_backends()`, `installed_backends()` |
 
 | `src/multi_memory/validate.py` | `NamespaceValidator` — checks adapter PREFIX attributes |
@@ -220,7 +220,7 @@ sub.method = lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("fail"))
 | `tests/test_cli.py` | CLI subcommand tests |
 | `tests/test_generic_adapter.py` | `_GenericAdapter` + `_try_generic_backend()` tests |
 
-| `.github/workflows/ci.yml` | CI — Python 3.11/3.12/3.13, `astral-sh/ruff-action`, actions v6, pytest + 90% coverage |
+| `.github/workflows/ci.yml` | CI — Python 3.10/3.11/3.12/3.13, `astral-sh/ruff-action`, actions v6, pytest + 90% coverage, hermes-agent pinned to `v2026.7.7.2` |
 
 ## Config precedence
 

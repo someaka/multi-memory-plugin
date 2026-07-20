@@ -105,7 +105,10 @@ class TestLoadBackendsFromConfig:
         mock_cls.return_value = mock_adapter
         mock_cls.CONFIG_KEY = "fake"
 
-        with mock.patch("multi_memory._SUB_CLASSES", (mock_cls,)):
+        with (
+            mock.patch("multi_memory._SUB_CLASSES", (mock_cls,)),
+            mock.patch("multi_memory._SUB_CLASSES_BY_KEY", {"fake": mock_cls}),
+        ):
             cfg = {"memory": {"multi": {"backends": {"fake": {}}}}}
             result = _load_backends_from_config(cfg)
         assert len(result) == 1
@@ -762,16 +765,15 @@ class TestRuntimeManagement:
         provider.remove_provider("closeable")
         sub_with_close.close.assert_called_once()
 
-    def test_remove_provider_calls_shutdown_when_no_close(self, provider):
-        """remove_provider calls shutdown() when close() not available."""
+    def test_remove_provider_calls_close_on_adapter(self, provider):
+        """remove_provider calls close() on the adapter."""
         sub = mock.MagicMock()
         sub.name = "shutdown_only"
-        # Remove close attribute to simulate no close() method
-        del sub.close
+        sub.close = mock.MagicMock()
         provider._subs.append(sub)
 
         provider.remove_provider("shutdown_only")
-        sub.shutdown.assert_called_once()
+        sub.close.assert_called_once()
 
     def test_add_then_remove_roundtrip(self, provider):
         """Full add-then-remove roundtrip works."""

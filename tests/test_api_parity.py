@@ -284,15 +284,16 @@ class TestBatchShutdown:
         _batch_shutdown(subs)
         assert sorted(closed) == ["a", "b", "c"]
 
-    def test_shutdown_used_when_no_close(self):
+    def test_close_called_on_adapter(self):
+        """_close_one calls sub.close() — the adapter handles the shutdown fallback."""
         from multi_memory import _batch_shutdown
 
-        shut = []
-        sub = mock.MagicMock(spec=["shutdown", "name"])
+        closed = []
+        sub = mock.MagicMock()
         sub.name = "x"
-        sub.shutdown = lambda: shut.append("x")
+        sub.close = lambda: closed.append("x")
         _batch_shutdown([sub])
-        assert shut == ["x"]
+        assert closed == ["x"]
 
     def test_timeout_abandoned(self, caplog):
         from multi_memory import _batch_shutdown

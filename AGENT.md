@@ -48,8 +48,8 @@ MultiMemoryProvider (implements MemoryProvider ABC)
 ├── _HindsightAdapter     → loads via _try_import("plugins.memory.hindsight")
 ├── _RetainDBAdapter      → loads via _try_import("plugins.memory.retaindb")
 ├── _ByteRoverAdapter     → loads via _try_import("plugins.memory.byterover")
-├── _GenericAdapter       → auto-discovered via load_memory_provider()
-└── _SupermemoryAdapter   → loads via _try_import("plugins.memory.supermemory")
+├── _SupermemoryAdapter   → loads via _try_import("plugins.memory.supermemory")
+└── _GenericAdapter       → auto-discovered via load_memory_provider() (not in _SUB_CLASSES)
 ```
 
 Each adapter inherits from `_SubProviderAdapter` which handles:
@@ -243,7 +243,8 @@ or `null` disables it.
    `plugins` doesn't exist. Always wrap in `try/except (ModuleNotFoundError, ValueError)`.
 
 3. **Config has two formats** — `providers: [list]` and `multi.backends: {dict}`
-   are both valid. The `providers` list wins. Tests must cover both.
+   are both valid. The `multi.backends` dict wins when both are present.
+   Tests must cover both.
 
 4. **One external provider limit** — Hermes deliberately limits to one external
    memory provider. This plugin IS that one provider. Do NOT propose lifting

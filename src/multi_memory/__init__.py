@@ -162,6 +162,11 @@ _SUB_CLASSES = (
     _SupermemoryAdapter,
 )
 
+# O(1) lookup by CONFIG_KEY — built once at import time
+_SUB_CLASSES_BY_KEY: dict[str, type[_SubProviderAdapter]] = {
+    cls.CONFIG_KEY: cls for cls in _SUB_CLASSES
+}
+
 # Validate all adapter PREFIX attributes at import time
 from .validate import NamespaceValidator  # noqa: E402, PLC0415
 
@@ -610,12 +615,12 @@ class MultiMemoryProvider(MemoryProvider):
 
 
 def _close_one(sub: _SubProviderAdapter) -> None:
-    """Close or shutdown a single sub-provider, preferring close()."""
-    close_fn = getattr(sub, "close", None)
-    if callable(close_fn):
-        close_fn()
-    else:
-        sub.shutdown()
+    """Close a single sub-provider via its close() method.
+
+    The adapter's close() already falls back to shutdown() when the
+    delegate has no close(), so this is a direct call.
+    """
+    sub.close()
 
 
 def _batch_shutdown(subs: list[_SubProviderAdapter], timeout: float = 10.0) -> None:
@@ -682,25 +687,24 @@ def _load_backends_from_config(config: dict) -> list[_SubProviderAdapter]:
     for key, enabled in backend_cfg.items():
         if _is_disabled(enabled):
             continue
-        for cls in _SUB_CLASSES:
-            if key == cls.CONFIG_KEY:
-                try:
-                    adapter = cls()
-                    if adapter.is_available():
-                        backends.append(adapter)
-                    else:
-                        logger.warning(
-                            "[multi-memory] %s installed but not available "
-                            "(missing credentials or config?)",
-                            key,
-                        )
-                except Exception as exc:
+        cls = _SUB_CLASSES_BY_KEY.get(key)
+        if cls is not None:
+            try:
+                adapter = cls()
+                if adapter.is_available():
+                    backends.append(adapter)
+                else:
                     logger.warning(
-                        "[multi-memory] %s listed in config but failed to load: %s",
+                        "[multi-memory] %s installed but not available "
+                        "(missing credentials or config?)",
                         key,
-                        exc,
                     )
-                break
+            except Exception as exc:
+                logger.warning(
+                    "[multi-memory] %s listed in config but failed to load: %s",
+                    key,
+                    exc,
+                )
         else:
             # No hardcoded adapter — try Hermes's plugin discovery
             _try_generic_backend(key, backends)

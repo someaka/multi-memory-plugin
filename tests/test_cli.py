@@ -461,8 +461,8 @@ class TestConfigHelpers:
         assert "honcho" in memory_cfg["providers"]
         assert memory_cfg["provider"] == "multi"
 
-    def test_remove_backend_from_config_last_updates_provider(self):
-        """_remove_backend_from_config resets provider when last is removed."""
+    def test_remove_backend_from_config_last_clears_provider(self):
+        """_remove_backend_from_config removes provider key when last backend is removed."""
         from multi_memory.cli import _remove_backend_from_config
 
         memory_cfg = {
@@ -471,7 +471,7 @@ class TestConfigHelpers:
             "multi": {"backends": {"honcho": {}}},
         }
         _remove_backend_from_config("honcho", memory_cfg)
-        assert memory_cfg["provider"] == "multi"
+        assert "provider" not in memory_cfg
 
     def test_get_active_backends_multi_format(self):
         """_get_active_backends reads multi.backends dict."""

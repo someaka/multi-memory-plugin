@@ -740,12 +740,19 @@ def _remove_backend_from_config(name: str, memory_cfg: dict) -> None:
     if name in providers:
         providers.remove(name)
         memory_cfg["providers"] = providers
-        memory_cfg["provider"] = "multi"  # always set to multi when using this plugin
 
     multi_cfg = memory_cfg.get("multi", {})
     backends = multi_cfg.get("backends", {})
     if name in backends:
         del backends[name]
+
+    # Set provider based on remaining backends
+    remaining = providers if providers else list(backends.keys())
+    if remaining:
+        memory_cfg["provider"] = "multi"
+    else:
+        # Last backend removed — fall back to built-in only
+        memory_cfg.pop("provider", None)
 
 
 # ── Status ─────────────────────────────────────────────────────────────────
@@ -934,6 +941,10 @@ def _cmd_add(args: argparse.Namespace) -> None:
         return
 
     backends_dict[backend] = {}
+    # Keep both config formats in sync
+    providers_list = memory_cfg.setdefault("providers", [])
+    if backend not in providers_list:
+        providers_list.append(backend)
     memory_cfg["provider"] = "multi"
 
     save_config(config)

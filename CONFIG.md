@@ -43,16 +43,18 @@ memory:
   provider: multi
   multi:
     backends:
-      mnemosyne: true            # stdlib-only; no pip install needed
-      mem0: true                 # requires MEM0_API_KEY in env
-      holographic: true          # stdlib-only
-      honcho: true               # requires honcho-ai package
-      openviking: true           # requires openviking + running server
-      hindsight: true            # requires hindsight-client
-      retaindb: true             # requires RETAINDB_API_KEY
-      byterover: true            # requires brv CLI (npm)
-      supermemory: true          # requires SUPERMEMORY_API_KEY
+      mnemosyne: {}              # enabled — {} is the canonical "on with no config" value
+      mem0: {}                   # requires MEM0_API_KEY in env
+      holographic: {}            # stdlib-only
+      honcho: {}                 # requires honcho-ai package
+      openviking: {}             # requires openviking + running server
+      hindsight: {}              # requires hindsight-client
+      retaindb: {}               # requires RETAINDB_API_KEY
+      byterover: {}              # requires brv CLI (npm)
+      supermemory: {}            # requires SUPERMEMORY_API_KEY
 ```
+
+Note: `true` also works (it's truthy), but `hermes multi add` writes `{}` as the canonical enabled value.
 
 ### Format 2: `providers` list (concise)
 

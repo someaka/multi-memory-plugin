@@ -22,7 +22,7 @@ def _is_disabled(value: Any) -> bool:
     """Return True if a config value means 'this backend is disabled'.
 
     Handles YAML falsey values: False, None, 0, and the strings
-    "", "0", "false", "False", "no".
+    "", "0", "false", "no", "off", "disabled" (case-insensitive).
 
     Note: an empty dict ``{}`` is truthy and means *enabled* — this is
     the canonical "enabled with no config" representation written
@@ -35,7 +35,7 @@ def _is_disabled(value: Any) -> bool:
     if isinstance(value, int):
         return value == 0
     if isinstance(value, str):
-        return value.strip().lower() in ("", "0", "false", "no")
+        return value.strip().lower() in ("", "0", "false", "no", "off", "disabled")
     return False
 
 
@@ -111,7 +111,7 @@ def get_enabled_backends(config: dict | None = None) -> list[str]:
     # List format
     providers = config.get("providers")
     if isinstance(providers, list) and providers:
-        return [p for p in providers if p]
+        return [p for p in providers if isinstance(p, str) and p]
 
     # Legacy single-string format (deprecated)
     single = config.get("provider", "")

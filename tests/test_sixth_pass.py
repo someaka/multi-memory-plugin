@@ -10,7 +10,6 @@ Covers:
 - _cmd_add providers_list guard against non-list
 """
 
-# ruff: noqa: PLC0415, PLR2004
 from __future__ import annotations
 
 import argparse

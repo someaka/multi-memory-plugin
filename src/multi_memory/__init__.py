@@ -154,11 +154,11 @@ from .config import _is_disabled
 
 __all__ = [
     "MultiMemoryProvider",
-    "register",
     "__version__",
+    "register",
 ]
 
-__version__ = "0.10.0"
+__version__ = "0.10.2"
 
 logger = logging.getLogger(__name__)
 
@@ -180,7 +180,7 @@ _SUB_CLASSES_BY_KEY: dict[str, type[_SubProviderAdapter]] = {
 }
 
 # Validate all adapter PREFIX attributes at import time
-from .validate import NamespaceValidator  # noqa: E402, PLC0415
+from .validate import NamespaceValidator  # noqa: E402
 
 _validator = NamespaceValidator(list(_SUB_CLASSES))
 _prefix_warnings = _validator.validate_all()
@@ -218,7 +218,7 @@ def register(ctx) -> None:
         ctx.register_memory_provider(provider)
 
     if hasattr(ctx, "register_cli_command"):
-        from .cli import multi_command, register_cli  # noqa: PLC0415
+        from .cli import multi_command, register_cli
 
         ctx.register_cli_command(
             name="multi",
@@ -296,7 +296,7 @@ class MultiMemoryProvider(MemoryProvider):
             self._loading = False
 
     def __load_config_impl(self) -> None:
-        from .config import load_full_config  # noqa: PLC0415
+        from .config import load_full_config
 
         cfg = load_full_config()
         if not cfg:
@@ -599,7 +599,7 @@ class MultiMemoryProvider(MemoryProvider):
 
     def backup_paths(self) -> list[str]:
         """Merge and deduplicate external paths from all sub-providers."""
-        from typing import cast  # noqa: PLC0415
+        from typing import cast
 
         paths: list[str] = []
         for sub in self._snapshot():
@@ -644,7 +644,7 @@ def _batch_shutdown(subs: list[_SubProviderAdapter], timeout: float = 10.0) -> N
     """
     if not subs:
         return
-    import concurrent.futures  # noqa: PLC0415
+    import concurrent.futures
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(subs), 4)) as executor:
         futures = {executor.submit(_close_one, sub): sub for sub in reversed(subs)}
@@ -683,7 +683,7 @@ def _normalize_multi_config(cfg: dict | None) -> dict:
         return backends
     providers = cfg.get("providers")
     if isinstance(providers, list) and providers:
-        return {p: {} for p in providers}
+        return {p: {} for p in providers if isinstance(p, str)}
     return {}
 
 
@@ -732,7 +732,7 @@ def _try_generic_backend(name: str, backends: list[_SubProviderAdapter]) -> None
     ``_GenericAdapter``.
     """
     try:
-        from plugins.memory import load_memory_provider  # noqa: PLC0415
+        from plugins.memory import load_memory_provider
 
         provider = load_memory_provider(name)
         if provider is None:

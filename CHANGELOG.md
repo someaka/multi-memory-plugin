@@ -5,6 +5,69 @@ All notable changes to the multi-memory plugin will be documented in this file.
 The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.2] — 2026-07-24
+
+### Fixed — Robustness (Audit Pass 8)
+- **`_normalize_multi_config` TypeError on unhashable providers items** —
+  `{"providers": [[1, 2]]}` or `{"providers": [{"key": "val"}]}` crashed
+  with `TypeError: unhashable type: 'list'` because the dict comprehension
+  `{p: {} for p in providers}` uses each item as a dict key. Added
+  `isinstance(p, str)` filter to skip non-string items.
+- **`get_enabled_backends` passes non-string items through** — `int`,
+  `None`, or other non-string items in the `providers` list would be
+  returned as-is, causing downstream crashes when used as backend names.
+  Added `isinstance(p, str)` filter.
+- **`_get_active_backends` same pattern** — same fix applied.
+
+### Changed — Test Coverage (Audit Pass 8)
+- **507 tests** (was 493). 14 new tests in `test_eighth_pass.py` covering
+  unhashable items in providers lists across all three config-parsing
+  functions.
+
+## [0.10.1] — 2026-07-24
+
+### Fixed — Robustness (Audit Pass 7)
+- **`_is_disabled` missing "off"/"disabled"** — `_is_disabled()` now
+  recognizes `"off"` and `"disabled"` strings (case-insensitive) as
+  disable values, matching what CONFIG.md and AGENT.md document as
+  supported. Previously only `"false"`, `"no"`, `"0"`, `""` were
+  recognized.
+- **`_set_active_backends` `setdefault` crash on non-dict `multi`/`backends`**
+  — `memory_cfg.setdefault("multi", {}).setdefault("backends", {})`
+  returns the pre-existing non-dict value when either key holds a
+  string, int, or list. Subsequent `.keys()` iteration crashes with
+  `AttributeError`. Replaced with isinstance-guard-and-coerce at each
+  nesting level.
+- **`_cmd_setup_wizard` `setdefault` returns pre-existing non-dict**
+  — `config.setdefault("memory", {})` returns the pre-existing value
+  when `memory` is a string. Downstream `_get_active_backends()` then
+  crashes. Replaced with isinstance-guard-and-coerce.
+- **`_cmd_setup_backend` same `setdefault` pattern** — same fix applied.
+
+### Changed — Code Quality (Audit Pass 7)
+- **RUF100 stale noqa detection enabled**. Added `RUF` to
+  `[tool.ruff.lint] select` in `pyproject.toml`. RUF100 detected 39
+  stale `# noqa` directives — all suppressing rules (`PLC0415`, `B027`,
+  `PERF203`, etc.) that were globally ignored or never enabled. All 39
+  removed; legitimate suppressions re-added as precise per-line noqa
+  comments on the exact rules each line triggers.
+- **`PLR2004` test magic-value noise eliminated** — added `tests/*`
+  per-file-ignore for `PLR2004`, removing 17 stale `# noqa: PLR2004`
+  comments from test files.
+- **`RUF022` `__all__` sorting** applied to `__init__.py` and
+  `budget.py`.
+- **`RUF005` iterable unpacking** — list concatenation in
+  `_install_dependencies` replaced with unpacking syntax.
+- **`_MASKED_SUFFIX_LEN` constant** extracted from magic `4` in secret
+  masking logic.
+- **`.gitignore`** — added `.mypy_cache/`.
+
+### Changed — Test Coverage (Audit Pass 7)
+- **493 tests** (was 474). 19 new tests in `test_seventh_pass.py`
+  covering `_is_disabled` off/disabled values, `_set_active_backends`
+  non-dict coercion, `_cmd_setup_wizard`/`_cmd_setup_backend` non-dict
+  memory guards, and `_MASKED_SUFFIX_LEN` constant existence.
+
 ## [0.10.0] — 2026-07-24
 
 ### Fixed — Canonical ABC Interface Alignment

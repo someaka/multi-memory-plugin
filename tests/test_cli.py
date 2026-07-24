@@ -1,5 +1,5 @@
 """Tests for the multi-memory CLI commands."""
-# ruff: noqa: PLR2004  # magic numbers in tests are normal
+# magic numbers in tests are normal
 
 from __future__ import annotations
 

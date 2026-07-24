@@ -226,11 +226,13 @@ sub.method = lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("fail"))
 | `tests/test_fourth_pass.py` | Non-dict config guards, _is_disabled case-insensitivity |
 | `tests/test_fifth_pass.py` | CLI display branches, _cmd_update, dispatch coverage |
 | `tests/test_sixth_pass.py` | isinstance guards on malformed YAML (get_status_config, _cmd_add, _install_dependencies) |
+| `tests/test_seventh_pass.py` | _is_disabled off/disabled, _set_active_backends non-dict coercion, _cmd_setup_wizard/backend non-dict memory guards |
+| `tests/test_eighth_pass.py` | Non-string/unhashable items in providers list (TypeError crash fix) |
 | `tests/test_generic_adapter.py` | `_GenericAdapter` + `_try_generic_backend()` tests |
 | `tests/test_second_pass.py` | Non-dict multi, _is_disabled semantics, close() fallback |
 | `tests/test_third_pass.py` | Re-entrancy guard, schema cache thread safety, config reader |
 
-| `.github/workflows/ci.yml` | CI — Python 3.10/3.11/3.12/3.13, `astral-sh/ruff-action`, actions v6, pytest + 90% coverage, hermes-agent pinned to `v2026.7.7.2` |
+| `.github/workflows/ci.yml` | CI — Python 3.10/3.11/3.12/3.13/3.14, `astral-sh/ruff-action`, actions v6, pytest + 90% coverage, mypy, hermes-agent pinned to `v2026.7.7.2` |
 
 ## Config precedence
 
@@ -240,7 +242,8 @@ sub.method = lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("fail"))
 3. `memory.provider` string (single-provider legacy)
 
 First match wins. A backend value of `false`, `"false"`, `"False"`, `"FALSE"`,
-`"0"`, `"no"`, `"NO"`, `0`, or `null` disables it (case-insensitive string matching).
+`"0"`, `"no"`, `"NO"`, `"off"`, `"OFF"`, `"disabled"`, `"DISABLED"`,
+`0`, or `null` disables it (case-insensitive string matching).
 
 ## Gotchas
 

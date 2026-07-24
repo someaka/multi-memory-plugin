@@ -78,6 +78,8 @@ ALL_BACKENDS: dict[str, str] = {
     "supermemory": "Semantic long-term graph memory",
 }
 
+_MASKED_SUFFIX_LEN = 4  # show last N chars of an existing secret in masked prompt
+
 
 # ── argparse registration ─────────────────────────────────────────────────
 
@@ -167,7 +169,7 @@ def _get_active_backends(memory_cfg: dict) -> list[str]:
 
     providers_list = memory_cfg.get("providers", [])
     if isinstance(providers_list, list) and providers_list:
-        return [p for p in providers_list if p]
+        return [p for p in providers_list if isinstance(p, str) and p]
     return []
 
 
@@ -252,7 +254,7 @@ def _find_provider_dir(provider_name: str) -> Path | None:  # pragma: no cover
         return None
 
 
-def _install_dependencies(provider_name: str) -> None:  # noqa: PLR0911,PLR0912,PLR0915  # pragma: no cover
+def _install_dependencies(provider_name: str) -> None:  # noqa: PLR0911, PLR0912, PLR0915  # pragma: no cover
     # network/fs — Hermes plugin system
     """Install pip dependencies declared in the provider's plugin.yaml."""
     import shutil
@@ -305,7 +307,7 @@ def _install_dependencies(provider_name: str) -> None:  # noqa: PLR0911,PLR0912,
 
     uv_path = shutil.which("uv")
     if uv_path:
-        install_cmd = [uv_path, "pip", "install", "--python", sys.executable, "--quiet"] + missing
+        install_cmd = [uv_path, "pip", "install", "--python", sys.executable, "--quiet", *missing]
         manual_cmd = f"uv pip install --python {sys.executable} {' '.join(missing)}"
     else:
         pip_cmd = shutil.which("pip3") or shutil.which("pip")
@@ -315,7 +317,7 @@ def _install_dependencies(provider_name: str) -> None:  # noqa: PLR0911,PLR0912,
             print("  Then re-run: hermes multi setup")
             return
         print("  ⚠ uv not found. Falling back to standard pip...")
-        install_cmd = [sys.executable, "-m", "pip", "install", "--quiet"] + missing
+        install_cmd = [sys.executable, "-m", "pip", "install", "--quiet", *missing]
         manual_cmd = f"{sys.executable} -m pip install {' '.join(missing)}"
 
     try:
@@ -454,7 +456,7 @@ def _curses_checklist(
 # ── Interactive setup wizard ───────────────────────────────────────────────
 
 
-def _cmd_setup_wizard(args: argparse.Namespace) -> None:  # noqa: PLR0912,PLR0915  # pragma: no cover
+def _cmd_setup_wizard(args: argparse.Namespace) -> None:  # noqa: PLR0912, PLR0915  # pragma: no cover
     # interactive wizard
     """Interactive curses-based memory backend setup wizard."""
     backends = _get_available_backends()
@@ -465,7 +467,10 @@ def _cmd_setup_wizard(args: argparse.Namespace) -> None:  # noqa: PLR0912,PLR091
         return
 
     config = load_config()
-    memory_cfg = config.setdefault("memory", {})
+    memory_cfg = config.get("memory")
+    if not isinstance(memory_cfg, dict):
+        memory_cfg = {}
+        config["memory"] = memory_cfg
 
     active = _get_active_backends(memory_cfg)
     if active:
@@ -572,13 +577,15 @@ def _cmd_setup_backend(backend_name: str) -> None:  # pragma: no cover
 
     name, _, provider = match
     config = load_config()
-    config.setdefault("memory", {})
+    memory_cfg = config.get("memory")
+    if not isinstance(memory_cfg, dict):
+        config["memory"] = {}
 
     _do_backend_setup(name, provider)
     # Config already saved by _do_backend_setup
 
 
-def _do_backend_setup(name: str, provider: Any) -> None:  # noqa: PLR0912,PLR0915  # pragma: no cover
+def _do_backend_setup(name: str, provider: Any) -> None:  # noqa: PLR0912, PLR0915  # pragma: no cover
     # interactive config
     """Run the full setup flow for a single backend."""
     _install_dependencies(name)
@@ -677,7 +684,7 @@ def _do_backend_setup(name: str, provider: Any) -> None:  # noqa: PLR0912,PLR091
             elif is_secret:
                 existing = os.environ.get(env_var, "") if env_var else ""
                 if existing:
-                    masked = f"...{existing[-4:]}" if len(existing) > 4 else "set"  # noqa: PLR2004
+                    masked = f"...{existing[-4:]}" if len(existing) > _MASKED_SUFFIX_LEN else "set"
                     val = _prompt(f"{desc} (current: {masked}, blank to keep)", secret=True)
                 else:
                     if url:
@@ -752,8 +759,14 @@ def _set_active_backends(memory_cfg: dict, names: list[str]) -> None:
     memory_cfg["providers"] = list(names)
     memory_cfg["provider"] = "multi"  # always set to multi when using this plugin
     # Also update multi.backends dict
-    multi_cfg = memory_cfg.setdefault("multi", {})
-    backends = multi_cfg.setdefault("backends", {})
+    multi_cfg = memory_cfg.get("multi")
+    if not isinstance(multi_cfg, dict):
+        multi_cfg = {}
+        memory_cfg["multi"] = multi_cfg
+    backends = multi_cfg.get("backends")
+    if not isinstance(backends, dict):
+        backends = {}
+        multi_cfg["backends"] = backends
     for name in names:
         if name not in backends:
             backends[name] = {}
@@ -793,7 +806,7 @@ def _remove_backend_from_config(name: str, memory_cfg: dict) -> None:
 # ── Update ─────────────────────────────────────────────────────────────────
 
 
-def _cmd_update(args: argparse.Namespace) -> None:  # noqa: PLR0912
+def _cmd_update(args: argparse.Namespace) -> None:
     """Update the multi-memory plugin via hermes plugins update."""
     print("\n  Updating multi-memory plugin...")
     print("  " + "─" * 40)
@@ -839,7 +852,7 @@ def _cmd_update(args: argparse.Namespace) -> None:  # noqa: PLR0912
 # ── Status ─────────────────────────────────────────────────────────────────
 
 
-def _cmd_status(args: argparse.Namespace) -> None:  # noqa: PLR0912,PLR0915
+def _cmd_status(args: argparse.Namespace) -> None:  # noqa: PLR0912, PLR0915
     """Show active backends and their config."""
     config = load_config()
     memory_cfg = config.get("memory", {})

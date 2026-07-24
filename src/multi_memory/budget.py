@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_THRESHOLD = 40
 
-__all__ = ["ToolBudgetWarning", "DEFAULT_THRESHOLD"]
+__all__ = ["DEFAULT_THRESHOLD", "ToolBudgetWarning"]
 
 
 class ToolBudgetWarning:

@@ -14,7 +14,7 @@ The `plugin.yaml` is the first thing Hermes reads. Multi-memory keeps it small (
 `plugin.yaml:1-9`
 ```yaml
 name: multi
-version: 0.10.0
+version: 0.10.2
 description: |
   Run multiple memory providers ...
 kind: standalone

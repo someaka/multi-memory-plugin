@@ -9,7 +9,7 @@ Covers:
 - JSON status output with non-dict multi
 """
 
-# ruff: noqa: PLC0415  # intentional imports-inside-functions in tests
+# intentional imports-inside-functions in tests
 from __future__ import annotations
 
 from unittest import mock

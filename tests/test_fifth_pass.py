@@ -4,7 +4,6 @@ multi_command dispatch, _cmd_add/remove display paths.
 These exercise the previously-uncovered CLI display and dispatch code.
 """
 
-# ruff: noqa: PLC0415, PLR2004
 from __future__ import annotations
 
 import argparse

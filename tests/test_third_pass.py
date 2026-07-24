@@ -9,7 +9,7 @@ Covers:
 - _normalize_multi_config rename consistency
 """
 
-# ruff: noqa: PLC0415, PLR2004  # intentional imports-inside-functions + magic numbers in tests
+# intentional imports-inside-functions + magic numbers in tests
 from __future__ import annotations
 
 import threading
@@ -47,7 +47,7 @@ class TestLoadConfigReentrancy:
                 counting_impl,
             ),
         ):
-            MultiMemoryProvider()  # noqa: B018 — instantiation triggers _load_config
+            MultiMemoryProvider()
 
         # The inner _load_config call should have been skipped by the guard
         assert call_count[0] == 1

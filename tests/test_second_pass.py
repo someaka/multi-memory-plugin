@@ -10,7 +10,7 @@ Covers:
 - _RetainDBAdapter inherits base close() (no override)
 """
 
-# ruff: noqa: PLC0415, PLR2004  # intentional imports-inside-functions + magic numbers in tests
+# intentional imports-inside-functions + magic numbers in tests
 from __future__ import annotations
 
 from unittest import mock
@@ -136,7 +136,7 @@ class TestAdapterCloseFallback:
 
     def test_close_no_close_no_shutdown_raises(self):
         """If delegate has neither close() nor shutdown(), close() raises."""
-        import contextlib  # noqa: PLC0415
+        import contextlib
 
         delegate = mock.MagicMock(spec=[])  # nothing
         adapter = self._make_adapter(delegate)

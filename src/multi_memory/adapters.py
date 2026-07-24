@@ -264,7 +264,7 @@ class _SubProviderAdapter:
 
     def get_config_schema(self) -> list[dict]:
         """Forward the delegate's config schema for ``hermes memory setup``."""
-        from typing import cast  # noqa: PLC0415
+        from typing import cast
 
         fn = getattr(self._delegate, "get_config_schema", None)
         return list(cast(list[dict], fn())) if callable(fn) else []
@@ -277,7 +277,7 @@ class _SubProviderAdapter:
 
     def backup_paths(self) -> list[str]:
         """Forward external paths declared by the delegate for `hermes backup`."""
-        from typing import cast  # noqa: PLC0415
+        from typing import cast
 
         fn = getattr(self._delegate, "backup_paths", None)
         return list(cast(list[str], fn())) if callable(fn) else []
@@ -331,7 +331,7 @@ class _MnemosyneAdapter(_SubProviderAdapter):
         # ALL backends, including Honcho which can hang when missing config.
         provider = None
         try:
-            from plugins.memory import load_memory_provider  # noqa: PLC0415
+            from plugins.memory import load_memory_provider
         except ImportError:
             pass
         else:

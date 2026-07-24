@@ -10,7 +10,7 @@ Covers:
 - Budget threshold applied from single config read
 """
 
-# ruff: noqa: PLC0415, PLR2004  # intentional imports-inside-functions + magic numbers in tests
+# intentional imports-inside-functions + magic numbers in tests
 from __future__ import annotations
 
 import json

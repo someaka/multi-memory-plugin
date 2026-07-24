@@ -242,9 +242,11 @@ hermes multi remove mem0         # disables
 
 A backend is treated as disabled if its value is one of:
 - `false` (YAML boolean)
-- `"false"` / `"False"` (string)
+- `"false"` / `"False"` (string, case-insensitive)
 - `"0"` (string)
-- `"no"` (string)
+- `"no"` (string, case-insensitive)
+- `"off"` (string, case-insensitive)
+- `"disabled"` (string, case-insensitive)
 - `0` (integer)
 - `null` / `~` (YAML null)
 - `""` (empty string)

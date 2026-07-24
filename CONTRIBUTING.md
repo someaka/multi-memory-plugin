@@ -96,7 +96,7 @@ Zero tolerance for silent failures.
 
 ## CI
 
-Runs on push to `main` and on PRs. Python 3.10, 3.11, 3.12, 3.13.
+Runs on push to `main` and on PRs. Python 3.10, 3.11, 3.12, 3.13, 3.14.
 Uses `astral-sh/ruff-action` for lint/format, `actions/checkout@v6`, `actions/setup-python@v6`.
 Hermes-agent pinned to `v2026.7.7.2` for MemoryProvider API stability.
-Pytest with 90% coverage threshold.
+Pytest with 90% coverage threshold. Separate mypy type-check job.

@@ -14,7 +14,7 @@ The `plugin.yaml` is the first thing Hermes reads. Multi-memory keeps it small (
 `plugin.yaml:1-9`
 ```yaml
 name: multi
-version: 0.7.2
+version: 0.10.0
 description: |
   Run multiple memory providers ...
 kind: standalone
@@ -216,22 +216,18 @@ Hermes-guard already has subscriber lists (`_stream_output_subscribers`, etc.) b
 Sub-provider shutdown runs in a separate thread with a 10-second timeout. If it hangs, it is abandoned with a warning — the main thread never blocks indefinitely.
 
 **Where in multi-memory:**
-`src/multi_memory/__init__.py:584-610`
+`src/multi_memory/__init__.py:626-651` (`_batch_shutdown`)
 ```python
-def _close_or_shutdown(sub, name, timeout=10.0):
+def _batch_shutdown(subs: list[_SubProviderAdapter], timeout: float = 10.0) -> None:
+    """Shutdown all sub-providers concurrently with timeout."""
+    if not subs:
+        return
     import concurrent.futures
-    def _do_close():
-        close_fn = getattr(sub, "close", None)
-        if callable(close_fn):
-            close_fn()
-        else:
-            sub.shutdown()
-    try:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(_do_close)
-            future.result(timeout=timeout)
-    except concurrent.futures.TimeoutError:
-        logger.warning("[multi-memory] shutdown %s timed out after %.0fs — abandoned", name, timeout)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(subs)) as executor:
+        futures = {executor.submit(sub.close): sub for sub in subs}
+        done, not_done = concurrent.futures.wait(futures, timeout=timeout)
+        for sub in not_done:
+            logger.warning("[multi-memory] shutdown timed out for %s", sub.name)
 ```
 
 **How hermes-guard should adopt it:**
@@ -245,26 +241,26 @@ Hermes-guard has no uninstall/shutdown path beyond `uninstall_patch()`. It shoul
 
 ---
 
-## Pattern 9: Config Display Override (`format_config_display`)
+## Pattern 9: Config Display Override (`get_status_config`)
 
 **What it is:**
-The provider overrides `format_config_display(config)` to return human-friendly `(key, value)` pairs instead of dumping raw dicts. This makes `hermes memory status` output readable.
+The provider overrides `get_status_config(config)` to return human-friendly dict pairs instead of dumping raw dicts. This makes `hermes memory status` output readable.
 
 **Where in multi-memory:**
 `src/multi_memory/__init__.py:247-262`
 ```python
-def format_config_display(self, config: dict) -> list[tuple[str, str]]:
-    multi_cfg = config.get("multi", {})
+def get_status_config(self, provider_config: dict) -> dict:
+    multi_cfg = provider_config.get("multi", {})
     backends = multi_cfg.get("backends", {})
     if backends:
         items = ", ".join(k if v in ({}, True) else f"{k}({v})" for k, v in backends.items())
-        return [("backends", items)]
+        return {"backends": items}
     ...
 ```
 
 **How hermes-guard should adopt it:**
-Hermes-guard does not implement `format_config_display` at all. If it ever becomes a provider-like plugin (or if Hermes adds a generic `plugin status` command), it should:
-1. Add a `format_config_display(config) -> list[tuple[str, str]]` function that shows:
+Hermes-guard does not implement `get_status_config` at all. If it ever becomes a provider-like plugin (or if Hermes adds a generic `plugin status` command), it should:
+1. Add a `get_status_config(config) -> dict` function that shows:
    - `enabled: yes/no`
    - `toxicity_threshold_warn: 0.60`
    - `toxicity_threshold_halt: 0.85`
@@ -334,13 +330,13 @@ Hermes-guard could add a similar import-time check for its pattern registry — 
 | # | Pattern | Multi-Memory Location | Hermes-Guard Gap |
 |---|---------|----------------------|------------------|
 | 1 | Complete plugin.yaml | `plugin.yaml` | Missing `pip_dependencies`, short description |
-| 2 | Standalone stub ABC | `__init__.py:35-117` | No stubs for Hermes imports |
-| 3 | Capability-checked register | `__init__.py:183-217` | Missing `register_cli_command` branch |
+| 2 | Standalone stub ABC | `__init__.py:33-129` | No stubs for Hermes imports |
+| 3 | Capability-checked register | `__init__.py:200-234` | Missing `register_cli_command` branch |
 | 4 | CLI subcommand tree | `cli.py:85-144` | No CLI module at all |
-| 5 | Lazy config paths | `config.py:23-59` | Does not read `~/.hermes/config.yaml` |
-| 6 | Schema validation before reg | `__init__.py:300-312` | No pipeline validation in `register()` |
-| 7 | Thread-safe fan-out | `__init__.py:337-373` | Subscriber lists unprotected |
-| 8 | Graceful shutdown w/ timeout | `__init__.py:584-610` | No shutdown/unregister path |
-| 9 | Config display override | `__init__.py:247-262` | No `format_config_display` |
-| 10 | Interactive setup wizard | `cli.py:376-432` | No setup wizard |
-| B | Import-time validation | `validate.py` + `__init__.py:157-166` | No import-time checks |
+| 5 | Lazy config paths | `config.py:23-57` | Does not read `~/.hermes/config.yaml` |
+| 6 | Schema validation before reg | `__init__.py:314-327` | No pipeline validation in `register()` |
+| 7 | Thread-safe fan-out | `__init__.py:342-373` | Subscriber lists unprotected |
+| 8 | Graceful shutdown w/ timeout | `__init__.py:626-651` | No shutdown/unregister path |
+| 9 | Config display override | `__init__.py:264-279` | No `get_status_config` |
+| 10 | Interactive setup wizard | `cli.py:379-435` | No setup wizard |
+| B | Import-time validation | `validate.py` + `__init__.py:170-180` | No import-time checks |

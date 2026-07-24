@@ -10,6 +10,7 @@ from __future__ import annotations
 from importlib.util import find_spec
 from pathlib import Path
 
+from multi_memory.adapters import MNEMOSYNE_PLUGIN_DIRS
 from multi_memory.config import _get_hermes_home
 
 # Each entry: (config_key, module_path, label)
@@ -31,13 +32,14 @@ __all__ = ["discover_backends", "installed_backends"]
 def _is_mnemosyne_plugin_installed() -> bool:
     """Check if the Mnemosyne user-installed plugin exists.
 
-    Mnemosyne's install script creates the plugin directory as
-    ``hermes-mnemosyne`` (matching the pip package name), so we
-    check both names.
+    Mnemosyne's install script may create the plugin directory as
+    ``hermes-mnemosyne`` (matching the pip package name) or
+    ``mnemosyne`` (canonical). The candidate names are centralized
+    in ``MNEMOSYNE_PLUGIN_DIRS`` in ``adapters.py``.
     """
     hermes_home = _get_hermes_home()
     plugins_dir = Path(hermes_home) / "plugins"
-    for name in ("mnemosyne", "hermes-mnemosyne"):
+    for name in MNEMOSYNE_PLUGIN_DIRS:
         plugin_dir = plugins_dir / name
         if plugin_dir.is_dir() and (plugin_dir / "__init__.py").exists():
             return True
@@ -79,4 +81,4 @@ def discover_backends() -> list[dict[str, str | bool]]:
 
 def installed_backends() -> list[str]:
     """Return config_key strings for backends that are currently installed."""
-    return [b["config_key"] for b in discover_backends() if b["installed"]]  # type: ignore[literal-required]
+    return [str(b["config_key"]) for b in discover_backends() if b["installed"]]

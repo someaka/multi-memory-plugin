@@ -71,7 +71,15 @@ except ImportError:  # pragma: no cover — standalone stub
         def queue_prefetch(self, query: str, **kwargs) -> None:  # noqa: B027
             pass
 
-        def sync_turn(self, user_content: str, assistant_content: str, **kwargs) -> None:  # noqa: B027
+        def sync_turn(  # noqa: B027
+            self,
+            user_content: str,
+            assistant_content: str,
+            *,
+            session_id: str = "",
+            messages: list | None = None,
+            **kwargs,
+        ) -> None:
             pass
 
         def on_turn_start(  # noqa: B027
@@ -142,11 +150,15 @@ from .adapters import (
     _SupermemoryAdapter,
 )
 from .budget import ToolBudgetWarning
+from .config import _is_disabled
 
 __all__ = [
     "MultiMemoryProvider",
     "register",
+    "__version__",
 ]
+
+__version__ = "0.10.0"
 
 logger = logging.getLogger(__name__)
 
@@ -178,23 +190,6 @@ if _prefix_warnings:
         len(_prefix_warnings),
     )
 del _validator, _prefix_warnings  # cleanup module namespace
-
-
-def _is_disabled(value: Any) -> bool:
-    """Return True if a config value means 'this backend is disabled'.
-
-    Handles YAML falsey values: False, None, 0, and the strings
-    "", "0", "false", "False", "no".
-
-    Note: an empty dict ``{}`` is truthy and means *enabled* — this is
-    the canonical "enabled with no extra config" representation written
-    by ``hermes multi add``.
-    """
-    if value is False or value is None:
-        return True
-    if isinstance(value, str):
-        return value.strip() in ("", "0", "false", "False", "no")
-    return bool(isinstance(value, int) and value == 0)
 
 
 def register(ctx) -> None:
@@ -261,22 +256,25 @@ class MultiMemoryProvider(MemoryProvider):
             names = [s.name for s in self._subs]
         return f"MultiMemoryProvider(backends={names})"
 
-    def format_config_display(self, config: dict) -> list[tuple[str, str]]:
-        """Return clean (key, display_value) pairs for hermes memory status.
+    def get_status_config(self, provider_config: dict) -> dict:
+        """Return cleaned config for ``hermes memory status`` display.
 
-        Overrides the default raw-dict display so backends show as
-        ``backends: mnemosyne, openviking`` instead of
-        ``backends: {'mnemosyne': {}, 'openviking': {}}``.
+        Hermes calls ``get_status_config()`` on the active provider when
+        showing status. We return a flat dict summarising active backends
+        instead of the raw nested config.
         """
-        multi_cfg = config.get("multi", {})
+        multi_cfg = provider_config.get("multi", {})
         backends = multi_cfg.get("backends", {})
         if backends:
-            items = ", ".join(k if v in ({}, True) else f"{k}({v})" for k, v in backends.items())
-            return [("backends", items)]
-        providers = config.get("providers", [])
+            return {
+                "backends": ", ".join(
+                    k if v in ({}, True) else f"{k}({v})" for k, v in backends.items()
+                )
+            }
+        providers = provider_config.get("providers", [])
         if providers:
-            return [("providers", ", ".join(providers))]
-        return []
+            return {"providers": ", ".join(providers)}
+        return {}
 
     def _load_config(self) -> None:
         """Read config.yaml and populate sub-adapters.
@@ -539,11 +537,20 @@ class MultiMemoryProvider(MemoryProvider):
         self._fan_out("queue_prefetch", query, session_id=session_id)
 
     def sync_turn(
-        self, user_content: str, assistant_content: str, *, session_id: str = "", **kwargs: Any
+        self,
+        user_content: str,
+        assistant_content: str,
+        *,
+        session_id: str = "",
+        messages: list[dict] | None = None,
+        **kwargs: Any,
     ) -> None:
-        messages = kwargs.get("messages")
         self._fan_out(
-            "sync_turn", user_content, assistant_content, session_id=session_id, messages=messages
+            "sync_turn",
+            user_content,
+            assistant_content,
+            session_id=session_id,
+            messages=messages,
         )
 
     def on_turn_start(self, turn_number: int = 0, message: str = "", **kwargs: Any) -> None:
@@ -558,6 +565,7 @@ class MultiMemoryProvider(MemoryProvider):
         *,
         parent_session_id: str = "",
         reset: bool = False,
+        rewound: bool = False,
         **kwargs: Any,
     ) -> None:
         if not new_session_id:
@@ -567,6 +575,7 @@ class MultiMemoryProvider(MemoryProvider):
             new_session_id,
             parent_session_id=parent_session_id,
             reset=reset,
+            rewound=rewound,
             **kwargs,
         )
 

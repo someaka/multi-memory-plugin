@@ -21,6 +21,11 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+# Plugin directory names Mnemosyne may be installed under.
+# ``mnemosyne`` is the canonical name; ``hermes-mnemosyne`` is the
+# pip-package-matching name some install scripts create.
+MNEMOSYNE_PLUGIN_DIRS: tuple[str, ...] = ("mnemosyne", "hermes-mnemosyne")
+
 
 def _try_import(module: str, cls: str) -> type | None:
     """Return a provider class or None if module absent / cannot import."""
@@ -53,7 +58,7 @@ def _renorm_schemas(raw: list[dict], prefix: str) -> list[dict]:
     pfx = f"{prefix}_"
     result = []
     for s in raw:
-        name = s["name"]
+        name = str(s.get("name", "") or "")
         if name.startswith(pfx):
             name = name[len(pfx) :]
         result.append({**s, "name": f"{prefix}_{name}"})
@@ -79,9 +84,18 @@ class _SubProviderAdapter:
                 f"(pip install {self.CONFIG_KEY!r})"
             )
         self._delegate = real_cls()
-        # Cache introspection results — delegate doesn't change after init
+        self._init_caches()
+
+    def _init_caches(self) -> _SubProviderAdapter:
+        """Initialize introspection cache fields, returning ``self`` for chaining.
+
+        Subclasses that bypass ``__init__`` (e.g. ``_GenericAdapter``,
+        ``_MnemosyneAdapter``) call this instead of duplicating cache
+        field assignments — all cache fields are declared in one place.
+        """
         self._cached_write_mode: str | None = None
         self._cached_accepts_messages: bool | None = None
+        return self
 
     @property
     def name(self) -> str:
@@ -282,13 +296,11 @@ class _GenericAdapter(_SubProviderAdapter):
     PREFIX = ""  # No prefix — provider handles its own names
 
     def __init__(self, provider: Any, name: str, **kwargs: Any):
-        # Bypass _SubProviderAdapter.__init__ (which does _try_import),
-        # but replicate the cache-field init so any new cached fields
-        # added to the base class are picked up here too.
+        # Bypass _SubProviderAdapter.__init__ which calls _try_import.
+        # The provider is already loaded — just store it and init caches.
         self._delegate = provider
         self._name = name
-        self._cached_write_mode: str | None = None
-        self._cached_accepts_messages: bool | None = None
+        self._init_caches()
 
     @property
     def name(self) -> str:
@@ -324,17 +336,21 @@ class _MnemosyneAdapter(_SubProviderAdapter):
             pass
         else:
             # Try both possible plugin directory names
-            for dirname in ("mnemosyne", "hermes-mnemosyne"):
+            for dirname in MNEMOSYNE_PLUGIN_DIRS:
                 try:
                     provider = load_memory_provider(dirname)
-                except Exception:
+                except Exception as exc:
+                    logger.debug(
+                        "[multi-memory] load_memory_provider('%s') failed: %s",
+                        dirname,
+                        exc,
+                    )
                     continue
                 if provider is not None:
                     break
         if provider is not None:
             self._delegate = provider
-            self._cached_write_mode = None
-            self._cached_accepts_messages = None
+            self._init_caches()
         else:
             raise RuntimeError(
                 "[multi-memory] Mnemosyne plugin not found. "

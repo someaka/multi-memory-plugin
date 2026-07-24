@@ -15,9 +15,28 @@ from typing import Any
 
 import yaml
 
-from multi_memory import _is_disabled
-
 logger = logging.getLogger(__name__)
+
+
+def _is_disabled(value: Any) -> bool:
+    """Return True if a config value means 'this backend is disabled'.
+
+    Handles YAML falsey values: False, None, 0, and the strings
+    "", "0", "false", "False", "no".
+
+    Note: an empty dict ``{}`` is truthy and means *enabled* — this is
+    the canonical "enabled with no config" representation written
+    by ``hermes multi add``.
+    """
+    if isinstance(value, bool):
+        return not value
+    if value is None:
+        return True
+    if isinstance(value, int):
+        return value == 0
+    if isinstance(value, str):
+        return value.strip().lower() in ("", "0", "false", "no")
+    return False
 
 
 def _get_hermes_home() -> str:
@@ -61,28 +80,12 @@ def load_multi_config() -> dict[str, Any]:
     """Load the multi-memory section from config.yaml.
 
     Returns the raw dict under ``memory`` (or ``{}`` on failure).
+    Delegates to ``load_full_config()`` — single file reader, no duplicate I/O.
     """
-    cfg_path = _get_config_path()
-    try:
-        with open(cfg_path, encoding="utf-8") as f:
-            cfg = yaml.safe_load(f) or {}
-    except FileNotFoundError:
-        logger.debug("[multi-memory] config not found at %s", cfg_path)
-        return {}
-    except (PermissionError, IsADirectoryError, yaml.YAMLError) as exc:
-        logger.warning("[multi-memory] failed to read config at %s: %s", cfg_path, exc)
-        return {}
-    except Exception as exc:
-        logger.warning("[multi-memory] unexpected error reading config: %s", exc)
-        return {}
-
-    if not isinstance(cfg, dict):
-        return {}
-
+    cfg = load_full_config()
     memory_cfg = cfg.get("memory")
     if not isinstance(memory_cfg, dict):
         return {}
-
     return memory_cfg
 
 

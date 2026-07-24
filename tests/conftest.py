@@ -17,6 +17,27 @@ if _src not in sys.path:
 _state = {"hermes_agent_root": None}
 
 
+def _hermes_agent_candidates() -> list[str]:
+    """Return candidate directories for the hermes-agent source tree.
+
+    Resolution order:
+    1. ``HERMES_AGENT_PATH`` env var (explicit override)
+    2. ``~/.hermes/hermes-agent`` (default checkout)
+    3. ``/tmp/hermes-agent`` (CI)
+    """
+    candidates: list[str] = []
+    env_path = os.environ.get("HERMES_AGENT_PATH", "")
+    if env_path:
+        candidates.append(os.path.expanduser(env_path))
+    candidates.extend(
+        [
+            os.path.expanduser("~/.hermes/hermes-agent"),
+            "/tmp/hermes-agent",
+        ]
+    )
+    return candidates
+
+
 def _holographic_available() -> bool:
     """Check if the holographic backend is importable.
 
@@ -36,10 +57,7 @@ def _holographic_available() -> bool:
     except (ModuleNotFoundError, ValueError):
         pass
 
-    for candidate in (
-        os.path.expanduser("~/.hermes/hermes-agent"),
-        "/tmp/hermes-agent",
-    ):
+    for candidate in _hermes_agent_candidates():
         p = os.path.join(candidate, "plugins", "memory", "holographic", "__init__.py")
         if os.path.isfile(p):
             # Found the source — add it to sys.path so imports work
@@ -63,10 +81,7 @@ def _ensure_hermes_agent_on_path() -> None:
     if _state["hermes_agent_root"] is not None:
         return
 
-    for candidate in (
-        os.path.expanduser("~/.hermes/hermes-agent"),
-        "/tmp/hermes-agent",
-    ):
+    for candidate in _hermes_agent_candidates():
         p = os.path.join(candidate, "plugins", "memory", "holographic", "__init__.py")
         if os.path.isfile(p):
             if candidate not in sys.path:

@@ -103,9 +103,9 @@ when a lifecycle callback triggers another method.
 
 ```python
 # Add a backend at runtime
-provider.add_provider("mem0", mem0_instance)
+provider.add_provider(mem0_adapter)
 
-# Remove a backend (shuts it down, resets health, cleans up tools)
+# Remove a backend (shuts it down, cleans up tools)
 provider.remove_provider("mem0")
 
 # Lookup
@@ -207,18 +207,27 @@ sub.method = lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("fail"))
 
 | File | Purpose |
 |------|---------|
-| `src/multi_memory/__init__.py` | `register()` entry point, `MultiMemoryProvider`, `_snapshot()`, `_batch_shutdown()`, `_is_disabled()`, `_fan_out()`, `_try_generic_backend()`, `__repr__` |
+| `src/multi_memory/__init__.py` | `register()` entry point, `MultiMemoryProvider`, `_snapshot()`, `_batch_shutdown()`, `_fan_out()`, `_try_generic_backend()`, `__repr__`, `get_status_config()` |
 | `src/multi_memory/adapters.py` | `_SubProviderAdapter` base + `_renorm_schemas()` + cached introspection + 9 hardcoded adapters + `_GenericAdapter` |
 | `src/multi_memory/budget.py` | `ToolBudgetWarning` — warns when schema count exceeds threshold |
 | `src/multi_memory/cli.py` | `register_cli()` + `hermes multi {setup,status,list,add,remove}` + interactive curses wizard + dependency installer + env var manager + `ALL_BACKENDS` |
-| `src/multi_memory/config.py` | `load_full_config()`, `load_multi_config()`, `get_enabled_backends()` with lazy paths |
+| `src/multi_memory/config.py` | `_is_disabled()`, `load_full_config()`, `load_multi_config()`, `get_enabled_backends()` with lazy paths |
 | `src/multi_memory/discovery.py` | `discover_backends()`, `installed_backends()` |
 
 | `src/multi_memory/validate.py` | `NamespaceValidator` — checks adapter PREFIX attributes |
 | `src/multi_memory/plugin.yaml` | Hermes plugin metadata (name: `multi`) |
 | `tests/test_adapters.py` | Adapter tests, provider tests, lifecycle hook tests |
+| `tests/test_adapters_extra.py` | Introspection, fan-out, config error path tests |
+| `tests/test_api_parity.py` | ABC parity: backup_paths, rewound, JSON contract, batch shutdown |
+| `tests/test_budget.py` | ToolBudgetWarning + NamespaceValidator tests |
 | `tests/test_cli.py` | CLI subcommand tests |
+| `tests/test_config.py` | Config loading, format precedence, error paths |
+| `tests/test_discovery.py` | Backend discovery + installation detection tests |
+| `tests/test_fourth_pass.py` | Non-dict config guards, _is_disabled case-insensitivity |
+| `tests/test_fifth_pass.py` | CLI display branches, _cmd_update, dispatch coverage |
 | `tests/test_generic_adapter.py` | `_GenericAdapter` + `_try_generic_backend()` tests |
+| `tests/test_second_pass.py` | Non-dict multi, _is_disabled semantics, close() fallback |
+| `tests/test_third_pass.py` | Re-entrancy guard, schema cache thread safety, config reader |
 
 | `.github/workflows/ci.yml` | CI — Python 3.10/3.11/3.12/3.13, `astral-sh/ruff-action`, actions v6, pytest + 90% coverage, hermes-agent pinned to `v2026.7.7.2` |
 
@@ -229,8 +238,8 @@ sub.method = lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("fail"))
 2. `memory.providers` list (concise)
 3. `memory.provider` string (single-provider legacy)
 
-First match wins. A backend value of `false`, `"false"`, `"0"`, `0`,
-or `null` disables it.
+First match wins. A backend value of `false`, `"false"`, `"False"`, `"FALSE"`,
+`"0"`, `"no"`, `"NO"`, `0`, or `null` disables it (case-insensitive string matching).
 
 ## Gotchas
 

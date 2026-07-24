@@ -20,13 +20,24 @@ hermes multi add holographic
 hermes multi add mnemosyne
 ```
 
-The setup wizard handles API keys, model choices, endpoint URLs, and
-auto-installs Python dependencies. Restart Hermes for changes to take effect.
+The setup wizard handles API keys, model choices, endpoint URLs, and auto-installs Python dependencies. Restart Hermes for changes to take effect.
 
-Need to remove a backend?
+To remove a backend:
 
 ```bash
-hermes multi remove holographic
+hermes multi remove <backend>
+```
+
+**Features**:
+- Add or remove backends from config
+- Updates both `multi.backends` dict and `providers` list formats simultaneously
+- Automatically sets `provider: multi`
+
+**Examples**:
+```bash
+hermes multi add mem0
+hermes multi add holographic
+hermes multi remove honcho
 ```
 
 ---

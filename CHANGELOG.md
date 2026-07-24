@@ -5,26 +5,89 @@ All notable changes to the multi-memory plugin will be documented in this file.
 The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.8.0] — 2026-06-08
+## [0.10.0] — 2026-07-24
+
+### Fixed — Canonical ABC Interface Alignment
+- **`format_config_display()` → `get_status_config()`** — the plugin implemented
+  a method Hermes never calls. ``hermes memory status`` calls
+  ``get_status_config(provider_config) -> dict`` on the active provider. Renamed
+  and changed return type from ``list[tuple[str,str]]`` to ``dict`` to match
+  the canonical interface used by OpenViking and Supermemory providers.
+- **`sync_turn` missing explicit `messages` parameter** — the ABC defines
+  ``messages: Optional[List[Dict]] = None`` as a named keyword-only arg. The
+  plugin hid it inside ``**kwargs``, meaning the adapter introspection
+  ``_sync_accepts_messages()`` could fail to detect it on the multiplexer.
+  Now explicitly declared on both ``MultiMemoryProvider`` and the standalone stub.
+
+### Fixed — Robustness (Full Audit Passes 1–3)
+- **`_renorm_schemas` KeyError on missing `name` key** — schemas without a
+  `"name"` field now default to `""` instead of crashing. Also handles
+  `None` values via `str()` coercion.
+- **`_is_disabled` case sensitivity** — `"FALSE"`, `"NO"`, `"No"` now correctly
+  disable backends via `.strip().lower()`. Previously only exact `"False"` matched.
+- **`_get_active_backends` crash on non-dict `multi`/`backends`/`providers`**
+  — added `isinstance` guards before all `.get()` calls. Malformed YAML
+  config no longer causes `AttributeError`.
+- **`_remove_backend_from_config` crash on non-dict `multi`/`backends`**
+  — same isinstance guard pattern. Non-list `providers` coerced to `[]`.
+- **`_cmd_remove` crash on non-dict config values** — added isinstance guards
+  for `multi_cfg`, `backends_dict`, `providers_list`.
+- **JSON status `config_format` crash on non-dict `multi`** — chained
+  `.get("multi", {}).get("backends")` replaced with isinstance-checked access.
+- **CLI schema field parsing** — `field["key"]` → `field.get("key")` with
+  isinstance check. `choices` validated as list. `ref_map` guarded against `None`.
+- **`pip_deps` validated as list** before iteration in dependency installer.
+- **CI `pip install -r requirements.txt` guarded** — wrapped in `if [ -f ... ]`.
+
+### Changed — Test Coverage and Documentation
+- **Coverage: 88% → 97%** — 62 new tests added across 2 new test files
+  (`test_fourth_pass.py`, `test_fifth_pass.py`). CLI coverage 71% → 99%.
+  All `_cmd_update`, `_cmd_status` display branches, and `multi_command`
+  dispatch paths now tested.
+- **454 total tests** (was 392), all passing, `--cov-fail-under=90` passes.
+- **`setup.cfg`** — added `[coverage:run]` and `[coverage:report]` sections
+  with branch coverage and standard exclude patterns.
+- **`RESEARCH_REPORT.md`** — updated stale `format_config_display` →
+  `get_status_config` references and version `0.7.2` → `0.10.0`.
+- **`AGENT.md`** — fixed key-files table (`_is_disabled` listed under
+  `config.py` not `__init__.py`, added all test files to table, added
+  `get_status_config()` to `__init__.py` row). Updated config precedence
+  section to list all case-insensitive disable values.
+- **`CONFIG.md`** — removed stale Chinese text, corrected `add` → `remove`
+  in removal section.
+- **`on_session_switch` missing explicit `rewound` parameter** — the ABC defines
+  ``rewound: bool = False`` as a named keyword-only arg. The plugin hid it
+  inside ``**kwargs``. Now explicitly declared and forwarded to all subs.
 
 ### Changed
-- **Removed HealthTracker entirely** — no failure counting, no exclusion,
-  no retry logic. The installed backends list is the truth. Errors are
-  logged at load time. If a backend fails to load, it's not in the list.
-- **`_MnemosyneAdapter` fails loud** — raises `RuntimeError` with install
-  instructions instead of silent `super().__init__()` fallback when
-  mnemosyne plugin is not installed.
-- **CI upgraded** — `actions/checkout@v6`, `actions/setup-python@v6`,
-  `astral-sh/ruff-action@v1`. Lint and test split into separate jobs.
-  Removed `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24` hack.
-- **Documentation full pass** — removed all stale circuit breaker references
-  from README, CONFIG.md, CONTRIBUTING.md, AGENT.md.
+- **CLI `format_config_display` reference** updated to call ``get_status_config``
+  with proper dict iteration for display output.
+- **Standalone stub `sync_turn`** now matches ABC signature exactly:
+  ``(*, session_id="", messages=None, **kwargs)`` instead of bare ``**kwargs``.
 
-### Fixed
-- Duplicate `getattr`/`callable` block in `_fan_out` (dead code from prior merge).
-- `test_cli.py` — properly mocks `builtins.__import__` for plugin discovery test.
+### Changed — Code Quality (Audit Pass 4)
+- **Removed vestigial `[flake8]` config** from `setup.cfg`. The project uses
+  ruff exclusively (CI, CONTRIBUTING.md, AGENT.md all reference ruff). The
+  flake8 section implied a linter that isn't installed or run.
+- **Python 3.14 added to CI matrix**. `pyproject.toml` declares
+  `requires-python = ">=3.10"` with no upper bound; CI now tests 3.10–3.14.
+- **mypy type checking added to CI** as a dedicated job. The codebase uses
+  type hints extensively; mypy now validates them at CI time. Fixed 3 type
+  errors surfaced by the initial run (`installed_backends` return type,
+  `desc` coercion to `str`, removed stale `type: ignore` comments).
+- **`conftest.py` hardcoded paths → `HERMES_AGENT_PATH` env var**. Developers
+  with a hermes-agent checkout outside `~/.hermes/` or `/tmp/` can now set
+  `HERMES_AGENT_PATH` instead of having `@requires_holographic` tests silently
+  skipped. CI already sets this var.
+- **Cache field init centralized** via `_SubProviderAdapter._init_caches()`.
+  `_GenericAdapter` and `_MnemosyneAdapter` previously duplicated cache field
+  assignments when bypassing the base `__init__`. Both now call `_init_caches()`
+  — adding a new cached field requires updating one method, not three sites.
+- **Mnemosyne plugin dir names centralized** in `MNEMOSYNE_PLUGIN_DIRS`
+  constant. Previously hardcoded in both `adapters.py` and `discovery.py`;
+  now both import the single constant.
 
-## [0.8.0] — 2026-07-20
+## [0.9.0] — 2026-07-20
 
 ### Added
 - **`backup_paths()` fan-out** — `MultiMemoryProvider` merges and deduplicates
@@ -75,6 +138,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **README badge** updated to Python 3.10+.
 - **CONTRIBUTING/AGENT.md** updated for CI changes and removed stale
   `_close_or_shutdown` reference.
+
+## [0.8.0] — 2026-06-08
+
+### Changed
+- **Removed HealthTracker entirely** — no failure counting, no exclusion,
+  no retry logic. The installed backends list is the truth. Errors are
+  logged at load time. If a backend fails to load, it's not in the list.
+- **`_MnemosyneAdapter` fails loud** — raises `RuntimeError` with install
+  instructions instead of silent `super().__init__()` fallback when
+  mnemosyne plugin is not installed.
+- **CI upgraded** — `actions/checkout@v6`, `actions/setup-python@v6`,
+  `astral-sh/ruff-action@v1`. Lint and test split into separate jobs.
+  Removed `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24` hack.
+- **Documentation full pass** — removed all stale circuit breaker references
+  from README, CONFIG.md, CONTRIBUTING.md, AGENT.md.
+
+### Fixed
+- Duplicate `getattr`/`callable` block in `_fan_out` (dead code from prior merge).
+- `test_cli.py` — properly mocks `builtins.__import__` for plugin discovery test.
 
 ## [0.7.2] — 2026-06-06
 

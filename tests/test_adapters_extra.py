@@ -225,34 +225,32 @@ class TestTryGenericBackend:
         assert backends == []
 
 
-class TestFormatConfigDisplay:
-    """format_config_display for both config shapes."""
+class TestGetStatusConfig:
+    """get_status_config returns a display dict for hermes memory status."""
 
     def test_backends_dict_format(self):
         from multi_memory import MultiMemoryProvider
 
         p = MultiMemoryProvider()
-        result = p.format_config_display({"multi": {"backends": {"mnemosyne": {}, "mem0": {}}}})
-        assert len(result) == 1
-        assert result[0][0] == "backends"
-        assert "mnemosyne" in result[0][1]
-        assert "mem0" in result[0][1]
+        result = p.get_status_config({"multi": {"backends": {"mnemosyne": {}, "mem0": {}}}})
+        assert "backends" in result
+        assert "mnemosyne" in result["backends"]
+        assert "mem0" in result["backends"]
 
     def test_providers_list_format(self):
         from multi_memory import MultiMemoryProvider
 
         p = MultiMemoryProvider()
-        result = p.format_config_display({"providers": ["mnemosyne", "mem0"]})
-        assert len(result) == 1
-        assert result[0][0] == "providers"
-        assert "mnemosyne" in result[0][1]
+        result = p.get_status_config({"providers": ["mnemosyne", "mem0"]})
+        assert "providers" in result
+        assert "mnemosyne" in result["providers"]
 
     def test_empty_config(self):
         from multi_memory import MultiMemoryProvider
 
         p = MultiMemoryProvider()
-        result = p.format_config_display({})
-        assert result == []
+        result = p.get_status_config({})
+        assert result == {}
 
 
 class TestFanOutDispatch:

@@ -225,6 +225,7 @@ sub.method = lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("fail"))
 | `tests/test_discovery.py` | Backend discovery + installation detection tests |
 | `tests/test_fourth_pass.py` | Non-dict config guards, _is_disabled case-insensitivity |
 | `tests/test_fifth_pass.py` | CLI display branches, _cmd_update, dispatch coverage |
+| `tests/test_sixth_pass.py` | isinstance guards on malformed YAML (get_status_config, _cmd_add, _install_dependencies) |
 | `tests/test_generic_adapter.py` | `_GenericAdapter` + `_try_generic_backend()` tests |
 | `tests/test_second_pass.py` | Non-dict multi, _is_disabled semantics, close() fallback |
 | `tests/test_third_pass.py` | Re-entrancy guard, schema cache thread safety, config reader |

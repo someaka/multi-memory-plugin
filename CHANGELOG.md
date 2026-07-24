@@ -87,6 +87,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   constant. Previously hardcoded in both `adapters.py` and `discovery.py`;
   now both import the single constant.
 
+### Fixed — Robustness (Audit Pass 5)
+- **`get_status_config` unguarded chains** — `provider_config.get("multi")`,
+  `.get("backends")`, `.get("providers")` had no isinstance checks. Non-dict
+  values from malformed YAML would crash `hermes memory status`. All paths
+  now guarded; `providers` items coerced via `str()`.
+- **`_get_active_backends` non-dict input** — added isinstance guard at entry.
+  Pass-through safety for callers receiving non-dict config.
+- **`_cmd_status` non-dict `memory`** — `config.get("memory")` could return
+  a non-dict from corrupted config.yaml. Now coerced to `{}` before use.
+- **`_cmd_add` pre-existing non-dict config values** — `setdefault("memory")`,
+  `setdefault("multi")`, `setdefault("backends")` each return the pre-existing
+  value when the key already exists, even if that value is a non-dict. All
+  three paths now coerce to `{}`. `providers` list also guarded.
+- **`_install_dependencies` non-dict `meta`** — `yaml.safe_load` can return
+  any type (bare string, list, number). Now guarded with isinstance check.
+- **`_install_dependencies` non-dict `ext_deps` items** — list items may be
+  non-dict if plugin.yaml is malformed. Non-dict items now skipped; non-list
+  `ext_deps` now returns early.
+- **`_load_config` docstring typo** — "re-enterd" → "re-entered".
+
+### Changed — Test Coverage (Audit Pass 5)
+- **474 tests** (was 454). 20 new tests in `test_sixth_pass.py` covering all
+  new isinstance guards. `config.py` coverage now 100%.
+
 ## [0.9.0] — 2026-07-20
 
 ### Added

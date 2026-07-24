@@ -157,6 +157,8 @@ def _get_active_backends(memory_cfg: dict) -> list[str]:
 
     Checks both ``multi.backends`` dict and ``providers`` list formats.
     """
+    if not isinstance(memory_cfg, dict):
+        return []
     multi_cfg = memory_cfg.get("multi", {})
     if isinstance(multi_cfg, dict):
         backends_dict = multi_cfg.get("backends", {})
@@ -250,7 +252,7 @@ def _find_provider_dir(provider_name: str) -> Path | None:  # pragma: no cover
         return None
 
 
-def _install_dependencies(provider_name: str) -> None:  # noqa: PLR0912,PLR0915  # pragma: no cover
+def _install_dependencies(provider_name: str) -> None:  # noqa: PLR0911,PLR0912,PLR0915  # pragma: no cover
     # network/fs — Hermes plugin system
     """Install pip dependencies declared in the provider's plugin.yaml."""
     import shutil
@@ -269,6 +271,9 @@ def _install_dependencies(provider_name: str) -> None:  # noqa: PLR0912,PLR0915 
             meta = yaml.safe_load(f) or {}
     except Exception as exc:
         logger.debug("[multi-memory] failed to parse plugin.yaml for '%s': %s", provider_name, exc)
+        return
+
+    if not isinstance(meta, dict):
         return
 
     pip_deps = meta.get("pip_dependencies", [])
@@ -328,7 +333,11 @@ def _install_dependencies(provider_name: str) -> None:  # noqa: PLR0912,PLR0915 
 
     # Show external (non-pip) dependencies
     ext_deps = meta.get("external_dependencies", [])
+    if not isinstance(ext_deps, list):
+        return
     for dep in ext_deps:
+        if not isinstance(dep, dict):
+            continue
         dep_name = dep.get("name", "")
         check_cmd = dep.get("check", "")
         install_cmd_str = dep.get("install", "")
@@ -834,6 +843,8 @@ def _cmd_status(args: argparse.Namespace) -> None:  # noqa: PLR0912,PLR0915
     """Show active backends and their config."""
     config = load_config()
     memory_cfg = config.get("memory", {})
+    if not isinstance(memory_cfg, dict):
+        memory_cfg = {}
     # Cache plugin discovery — called multiple times below
     _backends_cache = _get_available_backends()
     active = _get_active_backends(memory_cfg)
@@ -1024,9 +1035,18 @@ def _cmd_add(args: argparse.Namespace) -> None:
         return
 
     config = load_config()
-    memory_cfg = config.setdefault("memory", {})
+    memory_cfg = config.get("memory")
+    if not isinstance(memory_cfg, dict):
+        memory_cfg = {}
+        config["memory"] = memory_cfg
     multi_cfg = memory_cfg.setdefault("multi", {})
+    if not isinstance(multi_cfg, dict):
+        multi_cfg = {}
+        memory_cfg["multi"] = multi_cfg
     backends_dict = multi_cfg.setdefault("backends", {})
+    if not isinstance(backends_dict, dict):
+        backends_dict = {}
+        multi_cfg["backends"] = backends_dict
 
     if backend in backends_dict and not _is_disabled(backends_dict[backend]):
         print(f"\n  '{backend}' is already active.\n")
@@ -1034,9 +1054,12 @@ def _cmd_add(args: argparse.Namespace) -> None:
 
     backends_dict[backend] = {}
     # Keep both config formats in sync
-    providers_list = memory_cfg.setdefault("providers", [])
+    providers_list = memory_cfg.get("providers", [])
+    if not isinstance(providers_list, list):
+        providers_list = []
     if backend not in providers_list:
         providers_list.append(backend)
+    memory_cfg["providers"] = providers_list
     memory_cfg["provider"] = "multi"
 
     save_config(config)

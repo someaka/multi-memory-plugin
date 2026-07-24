@@ -263,23 +263,26 @@ class MultiMemoryProvider(MemoryProvider):
         showing status. We return a flat dict summarising active backends
         instead of the raw nested config.
         """
+        if not isinstance(provider_config, dict):
+            return {}
         multi_cfg = provider_config.get("multi", {})
-        backends = multi_cfg.get("backends", {})
-        if backends:
-            return {
-                "backends": ", ".join(
-                    k if v in ({}, True) else f"{k}({v})" for k, v in backends.items()
-                )
-            }
+        if isinstance(multi_cfg, dict):
+            backends = multi_cfg.get("backends", {})
+            if isinstance(backends, dict) and backends:
+                return {
+                    "backends": ", ".join(
+                        k if v in ({}, True) else f"{k}({v})" for k, v in backends.items()
+                    )
+                }
         providers = provider_config.get("providers", [])
-        if providers:
-            return {"providers": ", ".join(providers)}
+        if isinstance(providers, list) and providers:
+            return {"providers": ", ".join(str(p) for p in providers)}
         return {}
 
     def _load_config(self) -> None:
         """Read config.yaml and populate sub-adapters.
 
-        Uses a recursion guard: ``_load_config`` may be re-enterd
+        Uses a recursion guard: ``_load_config`` may be re-entered
         when ``load_memory_provider`` is called during CLI status
         commands, because Hermes resolves the active provider from
         config each time a provider is loaded.

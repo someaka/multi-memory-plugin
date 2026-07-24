@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name        = "multi-memory"
-version     = "0.10.2"
+version     = "0.10.3"
 description = "Standalone multi-destination MemoryProvider for Hermes Agent"
 requires-python = ">=3.10"
 license = "AGPL-3.0-or-later"

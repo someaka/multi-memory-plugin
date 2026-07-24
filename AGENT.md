@@ -228,6 +228,7 @@ sub.method = lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("fail"))
 | `tests/test_sixth_pass.py` | isinstance guards on malformed YAML (get_status_config, _cmd_add, _install_dependencies) |
 | `tests/test_seventh_pass.py` | _is_disabled off/disabled, _set_active_backends non-dict coercion, _cmd_setup_wizard/backend non-dict memory guards |
 | `tests/test_eighth_pass.py` | Non-string/unhashable items in providers list (TypeError crash fix) |
+| `tests/test_ninth_pass.py` | Float zero (0.0) disable value, int/bool regression tests |
 | `tests/test_generic_adapter.py` | `_GenericAdapter` + `_try_generic_backend()` tests |
 | `tests/test_second_pass.py` | Non-dict multi, _is_disabled semantics, close() fallback |
 | `tests/test_third_pass.py` | Re-entrancy guard, schema cache thread safety, config reader |
@@ -242,8 +243,8 @@ sub.method = lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("fail"))
 3. `memory.provider` string (single-provider legacy)
 
 First match wins. A backend value of `false`, `"false"`, `"False"`, `"FALSE"`,
-`"0"`, `"no"`, `"NO"`, `"off"`, `"OFF"`, `"disabled"`, `"DISABLED"`,
-`0`, or `null` disables it (case-insensitive string matching).
+`"0"`, `"0.0"`, `"no"`, `"NO"`, `"off"`, `"OFF"`, `"disabled"`, `"DISABLED"`,
+`0`, `0.0`, or `null` disables it (case-insensitive string matching).
 
 ## Gotchas
 

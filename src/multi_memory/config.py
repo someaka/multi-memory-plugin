@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 def _is_disabled(value: Any) -> bool:
     """Return True if a config value means 'this backend is disabled'.
 
-    Handles YAML falsey values: False, None, 0, and the strings
+    Handles YAML falsey values: False, None, 0, 0.0, and the strings
     "", "0", "false", "no", "off", "disabled" (case-insensitive).
 
     Note: an empty dict ``{}`` is truthy and means *enabled* — this is
@@ -32,7 +32,7 @@ def _is_disabled(value: Any) -> bool:
         return not value
     if value is None:
         return True
-    if isinstance(value, int):
+    if isinstance(value, int | float):
         return value == 0
     if isinstance(value, str):
         return value.strip().lower() in ("", "0", "false", "no", "off", "disabled")

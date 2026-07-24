@@ -158,7 +158,7 @@ __all__ = [
     "register",
 ]
 
-__version__ = "0.10.2"
+__version__ = "0.10.3"
 
 logger = logging.getLogger(__name__)
 

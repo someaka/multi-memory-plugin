@@ -248,6 +248,7 @@ A backend is treated as disabled if its value is one of:
 - `"off"` (string, case-insensitive)
 - `"disabled"` (string, case-insensitive)
 - `0` (integer)
+- `0.0` (float)
 - `null` / `~` (YAML null)
 - `""` (empty string)
 

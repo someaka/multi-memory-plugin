@@ -5,6 +5,19 @@ All notable changes to the multi-memory plugin will be documented in this file.
 The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.3] — 2026-07-24
+
+### Fixed — Robustness (Audit Pass 9)
+- **`_is_disabled(0.0)` returned False** — YAML parses `0.0` as a float,
+  but `isinstance(0.0, int)` is `False`, so `backends: {mem0: 0.0}` did
+  not disable mem0. Changed `isinstance(value, int)` to
+  `isinstance(value, int | float)` so float zero is correctly treated
+  as disabled. `bool` is still checked first (bool is a subclass of int).
+
+### Changed — Test Coverage (Audit Pass 9)
+- **517 tests** (was 507). 10 new tests in `test_ninth_pass.py` covering
+  float zero, negative float zero, and regression tests for int/bool.
+
 ## [0.10.2] — 2026-07-24
 
 ### Fixed — Robustness (Audit Pass 8)

@@ -20,6 +20,7 @@ import os
 import shlex
 import subprocess
 import sys
+from importlib.util import find_spec
 from pathlib import Path
 from typing import Any, cast
 
@@ -186,11 +187,6 @@ def register_cli(subparser: argparse.ArgumentParser) -> None:
         help="Validate multi-memory configuration",
         description="Check configuration for errors and validate backend connectivity.",
     )
-    sp.add_argument(
-        "--fix",
-        action="store_true",
-        help="Attempt to automatically fix common issues",
-    )
 
 
 # ── Command router ─────────────────────────────────────────────────────────
@@ -352,10 +348,13 @@ def _install_dependencies(provider_name: str) -> None:  # noqa: PLR0911, PLR0912
 
     missing = []
     for dep in pip_deps:
+        if not isinstance(dep, str):
+            continue
         import_name = import_names.get(dep, dep.replace("-", "_").split("[")[0])
         try:
-            __import__(import_name)
-        except ImportError:
+            if find_spec(import_name) is None:
+                missing.append(dep)
+        except (ModuleNotFoundError, ValueError):
             missing.append(dep)
 
     if not missing:
@@ -635,11 +634,6 @@ def _cmd_setup_backend(backend_name: str) -> None:  # pragma: no cover
         return
 
     name, _, provider = match
-    config = load_config()
-    memory_cfg = config.get("memory")
-    if not isinstance(memory_cfg, dict):
-        config["memory"] = {}
-
     _do_backend_setup(name, provider)
     # Config already saved by _do_backend_setup
 
@@ -939,9 +933,6 @@ def _cmd_update(args: argparse.Namespace) -> None:
         print(f"  ✗ Update failed: {exc}\n")
 
 
-# ── Status ─────────────────────────────────────────────────────────────────
-
-
 # ── Validate ──────────────────────────────────────────────────────────────
 
 
@@ -1009,16 +1000,6 @@ def _cmd_validate(args: argparse.Namespace) -> None:
         print("\n  Run 'hermes multi setup <backend>' to fix configuration issues.\n")
     else:
         print("  ✓ All backends validated successfully\n")
-
-    # Auto-fix mode
-    if getattr(args, "fix", False) and issues:
-        print("  Attempting auto-fix...\n")
-        for backend_name in active:
-            if any(backend_name in issue for issue in issues):
-                print(f"  • Trying to fix {backend_name}...")
-                # Could add auto-fix logic here
-                print(f"    (auto-fix not yet implemented for {backend_name})")
-        print()
 
 
 def _print_config_value(key: str, val: Any) -> None:
@@ -1093,8 +1074,6 @@ def _print_backend_status(backend_name: str, memory_cfg: dict, backends_cache: l
 def _cmd_status(args: argparse.Namespace) -> None:
     """Show active backends and their config."""
     config = load_config()
-    if config is None:
-        config = {}
     memory_cfg = config.get("memory", {})
     if not isinstance(memory_cfg, dict):
         memory_cfg = {}
@@ -1169,8 +1148,6 @@ def _cmd_list(args: argparse.Namespace) -> None:
     show_all = getattr(args, "show_all", False)
 
     config = load_config()
-    if config is None:
-        config = {}
     memory_cfg = config.get("memory", {})
     if not isinstance(memory_cfg, dict):
         memory_cfg = {}

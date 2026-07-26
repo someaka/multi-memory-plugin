@@ -62,7 +62,6 @@ class TestValidateCommand:
     def test_validate_no_backends(self):
         """Validate with no active backends succeeds."""
         args = MagicMock()
-        args.fix = False
 
         with (
             patch("multi_memory.cli.load_config", return_value={"memory": {}}),
@@ -73,7 +72,6 @@ class TestValidateCommand:
     def test_validate_with_active_backends(self):
         """Validate with active backends checks each one."""
         args = MagicMock()
-        args.fix = False
 
         mock_adapter = MagicMock()
         mock_adapter.is_available.return_value = True
@@ -88,7 +86,6 @@ class TestValidateCommand:
     def test_validate_unavailable_backend(self):
         """Validate reports unavailable backends."""
         args = MagicMock()
-        args.fix = False
 
         mock_adapter = MagicMock()
         mock_adapter.is_available.return_value = False
@@ -103,7 +100,6 @@ class TestValidateCommand:
     def test_validate_adapter_creation_failure(self):
         """Validate handles adapter creation failures."""
         args = MagicMock()
-        args.fix = False
 
         with (
             patch("multi_memory.cli.load_config", return_value={"memory": {}}),
@@ -112,25 +108,9 @@ class TestValidateCommand:
         ):
             _cmd_validate(args)
 
-    def test_validate_with_fix_flag(self):
-        """Validate with --fix flag attempts fixes."""
-        args = MagicMock()
-        args.fix = True
-
-        mock_adapter = MagicMock()
-        mock_adapter.is_available.return_value = False
-
-        with (
-            patch("multi_memory.cli.load_config", return_value={"memory": {}}),
-            patch("multi_memory.cli.get_enabled_backends", return_value=["mnemosyne"]),
-            patch("multi_memory.cli.create_adapter", return_value=mock_adapter),
-        ):
-            _cmd_validate(args)
-
     def test_validate_invalid_config(self):
         """Validate handles invalid config gracefully."""
         args = MagicMock()
-        args.fix = False
 
         with patch("multi_memory.cli.load_config", return_value={"memory": "invalid"}):
             _cmd_validate(args)
@@ -138,7 +118,6 @@ class TestValidateCommand:
     def test_validate_multiple_backends(self):
         """Validate can check multiple backends."""
         args = MagicMock()
-        args.fix = False
 
         mock_adapter = MagicMock()
         mock_adapter.is_available.return_value = True
@@ -153,3 +132,17 @@ class TestValidateCommand:
         ):
             _cmd_validate(args)
             assert mock_create.call_count == 2
+
+    def test_validate_adapter_raises_exception(self):
+        """Validate catches exceptions during adapter checks."""
+        args = MagicMock()
+
+        mock_adapter = MagicMock()
+        mock_adapter.is_available.side_effect = RuntimeError("connection refused")
+
+        with (
+            patch("multi_memory.cli.load_config", return_value={"memory": {}}),
+            patch("multi_memory.cli.get_enabled_backends", return_value=["mnemosyne"]),
+            patch("multi_memory.cli.create_adapter", return_value=mock_adapter),
+        ):
+            _cmd_validate(args)

@@ -64,14 +64,13 @@ def _normalize_tool_schema(schema: Any) -> dict | None:
     """
     if not isinstance(schema, dict):
         return None
-    if schema.get("type") == "function" and isinstance(schema.get("function"), dict):
-        schema = schema["function"]
-        if not isinstance(schema, dict):
-            return None
-    name = schema.get("name", "")
+    unwrapped: dict = schema
+    if unwrapped.get("type") == "function" and isinstance(unwrapped.get("function"), dict):
+        unwrapped = unwrapped["function"]
+    name = unwrapped.get("name", "")
     if not name or not isinstance(name, str):
         return None
-    return schema
+    return unwrapped
 
 
 def _renorm_schemas(raw: list[dict], prefix: str) -> list[dict]:

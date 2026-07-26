@@ -79,6 +79,47 @@ class TestGenericAdapter:
         schemas = adapter.get_tool_schemas()
         assert schemas == [{"name": "custom_remember", "description": "Store a fact"}]
 
+    def test_get_tool_schemas_normalizes_double_wrapped(self):
+        """Generic adapter unwraps double-wrapped OpenAI schemas."""
+
+        class DoubleWrappedProvider:
+            name = "wrapped"
+
+            def get_tool_schemas(self):
+                return [
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": "my_tool",
+                            "description": "test",
+                            "parameters": {},
+                        },
+                    }
+                ]
+
+        adapter = _GenericAdapter(DoubleWrappedProvider(), "wrapped")
+        schemas = adapter.get_tool_schemas()
+        assert len(schemas) == 1
+        assert schemas[0]["name"] == "my_tool"  # no prefix added
+        assert "type" not in schemas[0]  # unwrapped
+
+    def test_get_tool_schemas_skips_invalid(self):
+        """Generic adapter skips schemas with no resolvable name."""
+
+        class InvalidProvider:
+            name = "invalid"
+
+            def get_tool_schemas(self):
+                return [
+                    {"description": "no name"},
+                    {"name": "valid_tool", "description": "ok"},
+                ]
+
+        adapter = _GenericAdapter(InvalidProvider(), "invalid")
+        schemas = adapter.get_tool_schemas()
+        assert len(schemas) == 1
+        assert schemas[0]["name"] == "valid_tool"
+
     def test_handle_tool_call_passthrough(self):
         """Generic adapter passes tool_name through unchanged."""
         provider = FakeProvider()

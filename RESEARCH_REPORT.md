@@ -41,10 +41,13 @@ try:
     from agent.memory_provider import MemoryProvider
 except ImportError:  # pragma: no cover — standalone stub
     import abc
+
     class MemoryProvider(abc.ABC):
         name: str = ""
+
         @abc.abstractmethod
         def is_available(self) -> bool: ...
+
         ...
 ```
 
@@ -74,6 +77,7 @@ def register(ctx) -> None:
         ctx.register_memory_provider(provider)
     if hasattr(ctx, "register_cli_command"):
         from .cli import multi_command, register_cli
+
         ctx.register_cli_command(...)
 ```
 
@@ -97,6 +101,7 @@ def register_cli(subparser: argparse.ArgumentParser) -> None:
     subs = subparser.add_subparsers(dest="multi_command")
     sp = subs.add_parser("status", help="Show active backends and config")
     ...
+
 
 def multi_command(args: argparse.Namespace) -> None:
     sub = getattr(args, "multi_command", None)
@@ -124,8 +129,10 @@ Config paths are computed lazily (functions, not module-level constants) so they
 def _get_hermes_home() -> str:
     return os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes"))
 
+
 def _get_config_path() -> str:
     return os.path.join(_get_hermes_home(), "config.yaml")
+
 
 def load_multi_config() -> dict[str, Any]:
     try:
@@ -164,7 +171,8 @@ for adapter in candidates:
     except Exception as exc:
         logger.warning(
             "[multi-memory] %s failed schema validation — NOT registered: %s",
-            adapter.name, exc,
+            adapter.name,
+            exc,
         )
 ```
 
@@ -187,6 +195,7 @@ All mutable state (the sub-provider list) is protected by `threading.RLock`. A `
 def _snapshot(self) -> list[_SubProviderAdapter]:
     with self._lock:
         return list(self._subs)
+
 
 def _fan_out(self, method: str, *args, **kwargs):
     results = []
@@ -223,6 +232,7 @@ def _batch_shutdown(subs: list[_SubProviderAdapter], timeout: float = 10.0) -> N
     if not subs:
         return
     import concurrent.futures
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(subs)) as executor:
         futures = {executor.submit(sub.close): sub for sub in subs}
         done, not_done = concurrent.futures.wait(futures, timeout=timeout)
@@ -281,6 +291,7 @@ The `hermes multi setup` command provides an interactive curses-based wizard for
 def _curses_select(title, items, default=0):
     try:
         from hermes_cli.curses_ui import curses_radiolist
+
         return curses_radiolist(title, display_items, selected=default)
     except ImportError:
         # Simple terminal fallback
@@ -313,6 +324,7 @@ A `NamespaceValidator` runs at module import time to check that all adapter clas
 `src/multi_memory/validate.py:17-55` and `src/multi_memory/__init__.py:157-166`
 ```python
 from .validate import NamespaceValidator
+
 _validator = NamespaceValidator(list(_SUB_CLASSES))
 _prefix_warnings = _validator.validate_all()
 if _prefix_warnings:

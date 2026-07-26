@@ -29,10 +29,10 @@ ruff format src/ tests/          # auto-format
 
 ```python
 class _YourAdapter(_SubProviderAdapter):
-    CONFIG_KEY = "your_backend"     # config.yaml key
-    MODULE     = "plugins.memory.your_backend"  # import path
-    CLASS      = "YourBackendMemoryProvider"     # class name
-    PREFIX     = "your"             # tool name prefix
+    CONFIG_KEY = "your_backend"  # config.yaml key
+    MODULE = "plugins.memory.your_backend"  # import path
+    CLASS = "YourBackendMemoryProvider"  # class name
+    PREFIX = "your"  # tool name prefix
 
     def get_tool_schemas(self) -> list[dict]:
         raw = self._delegate.get_tool_schemas()

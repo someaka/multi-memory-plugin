@@ -49,19 +49,55 @@ def _try_import(module: str, cls: str) -> type | None:
         return None
 
 
+def _normalize_tool_schema(schema: Any) -> dict | None:
+    """Return a bare function-tool dict with a resolvable top-level ``name``.
+
+    Some providers return already-wrapped OpenAI tool entries::
+
+        {"type": "function", "function": {"name": ..., "description": ..., ...}}
+
+    Unwrapping prevents double-wrapping downstream.  Returns ``None`` for
+    anything without a resolvable name so callers can skip-with-warning.
+
+    Mirrors the upstream ``agent.memory_manager.normalize_tool_schema``
+    so custom backends that return either shape work transparently.
+    """
+    if not isinstance(schema, dict):
+        return None
+    if schema.get("type") == "function" and isinstance(schema.get("function"), dict):
+        schema = schema["function"]
+        if not isinstance(schema, dict):
+            return None
+    name = schema.get("name", "")
+    if not name or not isinstance(name, str):
+        return None
+    return schema
+
+
 def _renorm_schemas(raw: list[dict], prefix: str) -> list[dict]:
     """Strip existing prefix, re-add — guarantees exactly one prefix.
 
     Handles backends that self-prefix (``holographic_store``) and
     backends that don't (``fact_store``) uniformly.  Single-pass O(n).
+
+    Also normalizes double-wrapped OpenAI tool schemas (same shape
+    ``agent.memory_manager.normalize_tool_schema`` handles) so custom
+    backends returning either shape work transparently.
     """
     pfx = f"{prefix}_"
     result = []
     for s in raw:
-        name = str(s.get("name", "") or "")
+        norm = _normalize_tool_schema(s)
+        if norm is None:
+            logger.warning(
+                "[multi-memory] _renorm_schemas: skipping schema with no resolvable name: %r",
+                s,
+            )
+            continue
+        name = str(norm.get("name", "") or "")
         if name.startswith(pfx):
             name = name[len(pfx) :]
-        result.append({**s, "name": f"{prefix}_{name}"})
+        result.append({**norm, "name": f"{prefix}_{name}"})
     return result
 
 
@@ -120,11 +156,11 @@ class _SubProviderAdapter:
         # self-prefix (holographic) override this method.
         return cast(str, self._delegate.handle_tool_call(tool_name, args, **kwargs))
 
-    def prefetch(self, query: str, *, session_id: str = "") -> str:
-        return cast(str, self._delegate.prefetch(query, session_id=session_id))
+    def prefetch(self, query: str, *, session_id: str = "", **kwargs: Any) -> str:
+        return cast(str, self._delegate.prefetch(query, session_id=session_id, **kwargs))
 
-    def queue_prefetch(self, query: str, *, session_id: str = "") -> None:
-        self._delegate.queue_prefetch(query, session_id=session_id)
+    def queue_prefetch(self, query: str, *, session_id: str = "", **kwargs: Any) -> None:
+        self._delegate.queue_prefetch(query, session_id=session_id, **kwargs)
 
     def sync_turn(
         self,
@@ -133,6 +169,7 @@ class _SubProviderAdapter:
         *,
         session_id: str = "",
         messages: list[dict] | None = None,
+        **kwargs: Any,
     ) -> None:
         if messages is not None and self._sync_accepts_messages():
             self._delegate.sync_turn(
@@ -140,12 +177,14 @@ class _SubProviderAdapter:
                 assistant_content,
                 session_id=session_id,
                 messages=messages,
+                **kwargs,
             )
         else:
             self._delegate.sync_turn(
                 user_content,
                 assistant_content,
                 session_id=session_id,
+                **kwargs,
             )
 
     def system_prompt_block(self) -> str:
@@ -303,8 +342,20 @@ class _GenericAdapter(_SubProviderAdapter):
         return self._name
 
     def get_tool_schemas(self) -> list[dict]:
-        # Don't prefix — the provider handles its own tool names
-        return cast(list[dict], self._delegate.get_tool_schemas())
+        # Don't prefix — the provider handles its own tool names.
+        # Still normalize to unwrap double-wrapped OpenAI schemas.
+        raw = self._delegate.get_tool_schemas()
+        result = []
+        for s in raw:
+            norm = _normalize_tool_schema(s)
+            if norm is None:
+                logger.warning(
+                    "[multi-memory] _GenericAdapter: skipping schema with no resolvable name: %r",
+                    s,
+                )
+                continue
+            result.append(norm)
+        return result
 
     def handle_tool_call(self, tool_name: str, args: dict, **kwargs: Any) -> str:
         # Don't strip prefix — pass through as-is
@@ -363,7 +414,19 @@ class _MnemosyneAdapter(_SubProviderAdapter):
     def get_tool_schemas(self) -> list[dict]:
         # Mnemosyne's tools are ALREADY prefixed ("mnemosyne_recall"),
         # don't double-prefix like the base class does.
-        return cast(list[dict], self._delegate.get_tool_schemas())
+        # Still normalize to unwrap double-wrapped OpenAI schemas.
+        raw = self._delegate.get_tool_schemas()
+        result = []
+        for s in raw:
+            norm = _normalize_tool_schema(s)
+            if norm is None:
+                logger.warning(
+                    "[multi-memory] _MnemosyneAdapter: skipping schema with no resolvable name: %r",
+                    s,
+                )
+                continue
+            result.append(norm)
+        return result
 
 
 class _Mem0Adapter(_SubProviderAdapter):

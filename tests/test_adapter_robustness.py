@@ -288,29 +288,77 @@ class TestHandleToolCallEmptyPrefix:
 
 
 class TestRenormSchemasMissingName:
-    """_renorm_schemas handles missing 'name' key (from fourth pass)."""
+    """_renorm_schemas skips schemas with no resolvable name (normalize_tool_schema)."""
 
     def test_missing_name_key(self):
-        """Missing 'name' key does not raise KeyError."""
+        """Missing 'name' key causes the schema to be skipped."""
         schemas = [{"description": "test tool"}]
         result = _renorm_schemas(schemas, "prefix")
-        assert len(result) == 1
-        assert result[0]["name"] == "prefix_"
-        assert result[0]["description"] == "test tool"
+        assert len(result) == 0
 
     def test_empty_name_key(self):
-        """Empty 'name' key is handled."""
+        """Empty 'name' key causes the schema to be skipped."""
         schemas = [{"name": "", "description": "test"}]
         result = _renorm_schemas(schemas, "prefix")
-        assert len(result) == 1
-        assert result[0]["name"] == "prefix_"
+        assert len(result) == 0
 
     def test_none_name_key(self):
-        """None 'name' key is handled."""
+        """None 'name' key causes the schema to be skipped."""
         schemas = [{"name": None, "description": "test"}]
         result = _renorm_schemas(schemas, "prefix")
+        assert len(result) == 0
+
+    def test_double_wrapped_schema_unwrapped(self):
+        """Double-wrapped OpenAI tool schema is unwrapped and prefixed."""
+        schemas = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "my_tool",
+                    "description": "test",
+                    "parameters": {},
+                },
+            }
+        ]
+        result = _renorm_schemas(schemas, "pfx")
         assert len(result) == 1
-        assert result[0]["name"] == "prefix_"
+        assert result[0]["name"] == "pfx_my_tool"
+        assert result[0]["description"] == "test"
+        assert "type" not in result[0]  # unwrapped — no outer type key
+
+    def test_double_wrapped_already_prefixed(self):
+        """Double-wrapped schema that already has the prefix is not double-prefixed."""
+        schemas = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "pfx_my_tool",
+                    "description": "test",
+                    "parameters": {},
+                },
+            }
+        ]
+        result = _renorm_schemas(schemas, "pfx")
+        assert len(result) == 1
+        assert result[0]["name"] == "pfx_my_tool"
+
+    def test_non_dict_schema_skipped(self):
+        """Non-dict schema entries are silently skipped."""
+        schemas = ["not a dict", 42, None]  # type: ignore[list-item]
+        result = _renorm_schemas(schemas, "pfx")
+        assert len(result) == 0
+
+    def test_mixed_valid_and_invalid(self):
+        """Valid schemas survive alongside invalid ones."""
+        schemas = [
+            {"name": "good_tool", "description": "ok"},
+            {"description": "no name"},
+            {"type": "function", "function": {"name": "wrapped_tool"}},
+        ]
+        result = _renorm_schemas(schemas, "pfx")
+        assert len(result) == 2
+        assert result[0]["name"] == "pfx_good_tool"
+        assert result[1]["name"] == "pfx_wrapped_tool"
 
 
 class TestNormalizeRename:

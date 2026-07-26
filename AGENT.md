@@ -166,6 +166,7 @@ hermes-agent/agent/memory_provider.py
 
 ```python
 import sys
+
 mock_pm = mock.MagicMock()
 mock_pm.load_memory_provider.return_value = mock_delegate
 old = sys.modules.get("plugins.memory")
@@ -208,10 +209,11 @@ sub.method = lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("fail"))
 | File | Purpose |
 |------|---------|
 | `src/multi_memory/__init__.py` | `register()` entry point, `MultiMemoryProvider`, `_snapshot()`, `_batch_shutdown()`, `_fan_out()`, `_try_generic_backend()`, `__repr__`, `get_status_config()` |
-| `src/multi_memory/adapters.py` | `_SubProviderAdapter` base + `_renorm_schemas()` + cached introspection + 9 hardcoded adapters + `_GenericAdapter` |
+| `src/multi_memory/_version.py` | `__version__` — single source of truth |
+| `src/multi_memory/adapters.py` | `_SubProviderAdapter` base + `_renorm_schemas()` + `_normalize_tool_schema()` + cached introspection + 9 hardcoded adapters + `_GenericAdapter` |
 | `src/multi_memory/budget.py` | `ToolBudgetWarning` — warns when schema count exceeds threshold |
 | `src/multi_memory/cli.py` | `register_cli()` + `hermes multi {setup,status,list,add,remove}` + interactive curses wizard + dependency installer + env var manager + `ALL_BACKENDS` |
-| `src/multi_memory/config.py` | `_is_disabled()`, `load_full_config()`, `load_multi_config()`, `get_enabled_backends()` with lazy paths |
+| `src/multi_memory/config.py` | `_is_disabled()`, `_normalize_multi_config()`, `load_full_config()`, `load_multi_config()`, `get_enabled_backends()`, `MNEMOSYNE_PLUGIN_DIRS` |
 | `src/multi_memory/discovery.py` | `discover_backends()`, `installed_backends()` |
 
 | `src/multi_memory/validate.py` | `NamespaceValidator` — checks adapter PREFIX attributes |
@@ -226,10 +228,43 @@ sub.method = lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("fail"))
 | `tests/test_config_robustness.py` | `_is_disabled` semantics (bool/int/float/string/off/disabled), `_normalize_multi_config` non-dict guards, unhashable providers, `load_full_config` edge cases |
 | `tests/test_discovery.py` | Backend discovery + installation detection tests |
 | `tests/test_adapter_robustness.py` | Adapter close/config_schema lifecycle, schema cache thread safety, re-entrancy guard, prefix routing, `_renorm_schemas` missing name |
-| `tests/test_cli_robustness.py` | CLI dispatch, `_cmd_add/remove/status/update` edge cases, `_get_active_backends` guards, `_set_active_backends` coercion, `get_status_config` guards, `_install_dependencies` guards |
+| `tests/test_cli_robustness.py` | CLI dispatch, `_cmd_add/remove/status/update` edge cases, `get_enabled_backends` guards, `_set_active_backends` coercion, `get_status_config` guards, `_install_dependencies` guards |
 | `tests/test_generic_adapter.py` | `_GenericAdapter` + `_try_generic_backend()` tests |
 
-| `.github/workflows/ci.yml` | CI — Python 3.10/3.11/3.12/3.13/3.14, `astral-sh/ruff-action`, actions v6, pytest + 90% coverage, mypy, hermes-agent pinned to `v2026.7.7.2` |
+| `.github/workflows/ci.yml` | CI — Python 3.10/3.11/3.12/3.13/3.14, `astral-sh/ruff-action`, actions v6, pytest + 95% coverage, mypy, hermes-agent pinned to `v2026.7.7.2` |
+
+## Module dependency graph
+
+```
+_version.py  (no internal deps — single source of __version__)
+config.py    (no internal deps — canonical foundation layer)
+  ↓
+adapters.py  (imports MNEMOSYNE_PLUGIN_DIRS from config)
+  ↓
+__init__.py  (imports _normalize_multi_config, _is_disabled from config; adapters)
+  ↓
+discovery.py (imports MNEMOSYNE_PLUGIN_DIRS, _get_hermes_home from config)
+  ↓
+cli.py       (imports __version__ from _version; get_enabled_backends from config)
+```
+
+No cycles. `config.py` and `_version.py` are leaf modules — every other
+module depends on them, never the reverse.
+
+## Custom backend compatibility
+
+The plugin mirrors upstream Hermes MemoryManager improvements:
+
+- **`_normalize_tool_schema()`** in `adapters.py` mirrors
+  `agent.memory_manager.normalize_tool_schema` — custom backends that
+  return double-wrapped OpenAI tool schemas
+  (`{"type": "function", "function": {...}}`) are unwrapped transparently.
+- **All lifecycle methods forward `**kwargs`** — `sync_turn`, `prefetch`,
+  `queue_prefetch`, `on_turn_start`, `on_session_switch`, `on_delegation`
+  all pass through extra kwargs to the delegate. This ensures future ABC
+  additions are forwarded without adapter changes.
+- **`get_enabled_backends()`** in `config.py` replaces the deleted
+  `_get_active_backends()` from `cli.py` — single canonical config parser.
 
 ## Config precedence
 

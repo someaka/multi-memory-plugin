@@ -381,14 +381,14 @@ def _install_dependencies(provider_name: str) -> None:  # noqa: PLR0911, PLR0912
     try:
         subprocess.run(install_cmd, check=True, timeout=120, capture_output=True)
         print(f"  ✓ Installed {', '.join(missing)}")
-    except subprocess.CalledProcessError as e:
+    except subprocess.CalledProcessError as exc:
         print(f"  ⚠ Failed to install {', '.join(missing)}")
-        stderr = (e.stderr or b"").decode()[:200]
+        stderr = (exc.stderr or b"").decode()[:200]
         if stderr:
             print(f"    {stderr}")
         print(f"  Run manually: {manual_cmd}")
-    except Exception as e:
-        print(f"  ⚠ Install failed: {e}")
+    except Exception as exc:
+        print(f"  ⚠ Install failed: {exc}")
         print(f"  Run manually: {manual_cmd}")
 
     # Show external (non-pip) dependencies
@@ -766,8 +766,8 @@ def _do_backend_setup(name: str, provider: Any) -> None:  # noqa: PLR0912, PLR09
         if provider and hasattr(provider, "save_config"):
             try:
                 provider.save_config(provider_config, str(get_hermes_home()))
-            except Exception as e:
-                print(f"  Failed to write provider config: {e}")
+            except Exception as exc:
+                print(f"  Failed to write provider config: {exc}")
 
     # Update active backends
     if replace_existing:

@@ -257,8 +257,13 @@ Add `hermes guard list` or extend `status` to show:
 - Define a `GUARD_SCHEMA` list in `config.py` mirroring multi-memory's pattern:
   ```python
   GUARD_SCHEMA = [
-      {"key": "toxicity_threshold_warn", "description": "Warn threshold", "default": 0.6, "env_var": "HERMES_GUARD_TOXICITY_WARN"},
-      ...
+      {
+          "key": "toxicity_threshold_warn",
+          "description": "Warn threshold",
+          "default": 0.6,
+          "env_var": "HERMES_GUARD_TOXICITY_WARN",
+      },
+      ...,
   ]
   ```
 - Use it in the setup wizard for consistent prompting

@@ -21,9 +21,10 @@ import shlex
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
-from multi_memory.config import _is_disabled
+from multi_memory._version import __version__
+from multi_memory.config import _is_disabled, get_enabled_backends
 
 logger = logging.getLogger(__name__)
 
@@ -34,14 +35,10 @@ try:
 except ImportError:  # pragma: no cover — standalone stubs
 
     def load_config() -> dict:
-        import sys
-
         print("[multi-memory] Hermes not available — config not loaded", file=sys.stderr)
         return {}
 
     def save_config(config: dict) -> None:
-        import sys
-
         print(
             "[multi-memory] Hermes not available — config not saved (changes lost)",
             file=sys.stderr,
@@ -151,28 +148,6 @@ def multi_command(args: argparse.Namespace) -> None:
         print("    setup [name]    Interactive setup wizard\n")
 
 
-# ── Config helpers ─────────────────────────────────────────────────────────
-
-
-def _get_active_backends(memory_cfg: dict) -> list[str]:
-    """Extract active backend names from memory config.
-
-    Checks both ``multi.backends`` dict and ``providers`` list formats.
-    """
-    if not isinstance(memory_cfg, dict):
-        return []
-    multi_cfg = memory_cfg.get("multi", {})
-    if isinstance(multi_cfg, dict):
-        backends_dict = multi_cfg.get("backends", {})
-        if isinstance(backends_dict, dict) and backends_dict:
-            return [k for k, v in backends_dict.items() if not _is_disabled(v)]
-
-    providers_list = memory_cfg.get("providers", [])
-    if isinstance(providers_list, list) and providers_list:
-        return [p for p in providers_list if isinstance(p, str) and p]
-    return []
-
-
 # ── Provider discovery (Hermes plugin system) ──────────────────────────────
 
 
@@ -248,7 +223,7 @@ def _find_provider_dir(provider_name: str) -> Path | None:  # pragma: no cover
     try:
         from plugins.memory import find_provider_dir
 
-        return find_provider_dir(provider_name)
+        return cast(Path | None, find_provider_dir(provider_name))
     except Exception as exc:
         logger.debug("[multi-memory] find_provider_dir('%s') failed: %s", provider_name, exc)
         return None
@@ -406,7 +381,8 @@ def _curses_select(
         from hermes_cli.curses_ui import curses_radiolist
 
         display_items = [f"{label}  {desc}" if desc else label for label, desc in items]
-        return curses_radiolist(title, display_items, selected=default, cancel_returns=default)
+        result = curses_radiolist(title, display_items, selected=default, cancel_returns=default)
+        return cast(int, result)
     except ImportError:
         # Simple terminal fallback
         print(f"\n  {title}\n")
@@ -434,7 +410,7 @@ def _curses_checklist(
     try:
         from hermes_cli.curses_ui import curses_checklist
 
-        return curses_checklist(title, items, selected=selected or set())
+        return cast(set[int], curses_checklist(title, items, selected=selected or set()))
     except ImportError:
         # Simple terminal fallback
         print(f"\n  {title}\n")
@@ -472,7 +448,7 @@ def _cmd_setup_wizard(args: argparse.Namespace) -> None:  # noqa: PLR0912, PLR09
         memory_cfg = {}
         config["memory"] = memory_cfg
 
-    active = _get_active_backends(memory_cfg)
+    active = get_enabled_backends(memory_cfg)
     if active:
         print(f"\n  Currently active: {', '.join(active)}")
         print("  You can add more backends or change your selection.\n")
@@ -534,7 +510,7 @@ def _cmd_setup_wizard(args: argparse.Namespace) -> None:  # noqa: PLR0912, PLR09
             _remove_backend_from_config(backend_name, memory_cfg)
 
         save_config(config)
-        remaining = _get_active_backends(memory_cfg)
+        remaining = get_enabled_backends(memory_cfg)
         if remaining:
             print(f"\n  ✓ Removed: {', '.join(to_remove)}")
             print(f"  Active backends: {', '.join(remaining)}")
@@ -595,7 +571,7 @@ def _do_backend_setup(name: str, provider: Any) -> None:  # noqa: PLR0912, PLR09
     if not isinstance(memory_cfg, dict):
         memory_cfg = {}
         config["memory"] = memory_cfg
-    active = _get_active_backends(memory_cfg)
+    active = get_enabled_backends(memory_cfg)
 
     # Ask add-alongside vs replace
     replace_existing = False
@@ -616,7 +592,7 @@ def _do_backend_setup(name: str, provider: Any) -> None:  # noqa: PLR0912, PLR09
             _set_active_backends(memory_cfg, [name])
             active = [name]
         else:
-            active = _get_active_backends(memory_cfg)
+            active = get_enabled_backends(memory_cfg)
             if name not in active:
                 active.append(name)
             _set_active_backends(memory_cfg, active)
@@ -715,7 +691,7 @@ def _do_backend_setup(name: str, provider: Any) -> None:  # noqa: PLR0912, PLR09
         _set_active_backends(memory_cfg, [name])
         active = [name]
     else:
-        active = _get_active_backends(memory_cfg)
+        active = get_enabled_backends(memory_cfg)
         if name not in active:
             active.append(name)
         _set_active_backends(memory_cfg, active)
@@ -855,27 +831,23 @@ def _cmd_update(args: argparse.Namespace) -> None:
 def _cmd_status(args: argparse.Namespace) -> None:  # noqa: PLR0912, PLR0915
     """Show active backends and their config."""
     config = load_config()
+    if config is None:
+        config = {}
     memory_cfg = config.get("memory", {})
     if not isinstance(memory_cfg, dict):
         memory_cfg = {}
     # Cache plugin discovery — called multiple times below
     _backends_cache = _get_available_backends()
-    active = _get_active_backends(memory_cfg)
+    active = get_enabled_backends(memory_cfg)
     top_provider = memory_cfg.get("provider", "")
     json_out = getattr(args, "json_output", False)
 
     if json_out:
         # Add version to JSON output
-        try:
-            from multi_memory import __version__
-
-            version = __version__
-        except ImportError:
-            version = "unknown"
         print(
             json.dumps(
                 {
-                    "version": version,
+                    "version": __version__,
                     "provider": top_provider or "built-in",
                     "active_backends": active,
                     "config_format": (
@@ -893,13 +865,7 @@ def _cmd_status(args: argparse.Namespace) -> None:  # noqa: PLR0912, PLR0915
 
     print("\n  Memory status")
     print("  " + "─" * 40)
-    # Show version
-    try:
-        from multi_memory import __version__
-
-        print(f"  Version:      {__version__}")
-    except ImportError:
-        print("  Version:      unknown")
+    print(f"  Version:      {__version__}")
     print("  Built-in:     always active")
 
     if top_provider and top_provider != "multi":
@@ -1004,7 +970,13 @@ def _cmd_list(args: argparse.Namespace) -> None:
     """List all known backends — installed and available."""
     json_out = getattr(args, "json_output", False)
 
-    active_set = set(_get_active_backends(load_config().get("memory", {})))
+    config = load_config()
+    if config is None:
+        config = {}
+    memory_cfg = config.get("memory", {})
+    if not isinstance(memory_cfg, dict):
+        memory_cfg = {}
+    active_set = set(get_enabled_backends(memory_cfg))
 
     if json_out:
         rows = []
@@ -1088,8 +1060,8 @@ def _cmd_remove(args: argparse.Namespace) -> None:
         return
 
     config = load_config()
-    memory_cfg = config.get("memory", {})
-    if not memory_cfg:
+    memory_cfg = config.get("memory")
+    if not isinstance(memory_cfg, dict) or not memory_cfg:
         print("\n  No memory config found.\n")
         return
 
@@ -1106,7 +1078,7 @@ def _cmd_remove(args: argparse.Namespace) -> None:
 
     if backend not in backends_dict and backend not in providers_list:
         print(f"\n  '{backend}' is not in the active config.\n")
-        active = _get_active_backends(memory_cfg)
+        active = get_enabled_backends(memory_cfg)
         if active:
             print(f"  Active backends: {', '.join(active)}\n")
         return
@@ -1114,7 +1086,7 @@ def _cmd_remove(args: argparse.Namespace) -> None:
     _remove_backend_from_config(backend, memory_cfg)
     save_config(config)
 
-    remaining = _get_active_backends(memory_cfg)
+    remaining = get_enabled_backends(memory_cfg)
     if remaining:
         print(f"\n  ✓ Removed '{backend}'. Active: {', '.join(remaining)}\n")
     else:

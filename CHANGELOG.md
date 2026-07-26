@@ -5,6 +5,117 @@ All notable changes to the multi-memory plugin will be documented in this file.
 The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] — 2026-07-26
+
+### Changed — Architectural Consolidation
+
+- **Config module becomes canonical foundation** — moved `_normalize_multi_config()`
+  from `__init__.py` to `config.py` where it belongs alongside other config parsing.
+  `config.py` now has zero internal imports (true foundation layer).
+- **Eliminated duplicate config parser** — deleted `_get_active_backends()` from
+  `cli.py` (18 lines), replaced all 10 call sites with `config.get_enabled_backends()`.
+  Both functions did identical work; only one survives.
+- **`MNEMOSYNE_PLUGIN_DIRS` centralized in `config.py`** — moved from `adapters.py`
+  to eliminate cross-module constant dependency. `adapters.py` and `discovery.py`
+  now import from `config.py`.
+- **Version extracted to `_version.py`** — breaks circular import risk between
+  `__init__.py` ↔ `cli.py`. Both modules now import `__version__` from the single
+  source. Deferred `from multi_memory import __version__` calls in CLI removed.
+
+### Changed — Streamlining
+
+- **`concurrent.futures` moved to module-level import** — no longer deferred inside
+  `_batch_shutdown()`. Stdlib module, zero cost to import eagerly.
+- **Redundant `from typing import cast` removed** (4 locations: `adapters.py` ×3,
+  `__init__.py` ×1) — already imported at module top.
+- **Dead `import sys` removed** (2 locations in `cli.py` standalone fallbacks) —
+  `sys` already at module level.
+- **Misleading comment fixed** — `__init__.py` claimed `_normalize_multi_config`
+  was "re-exported" but it was never in `__all__`. Comment now accurately describes
+  private-but-accessible semantics.
+- **Orphaned `setup.cfg` deleted** — superseded by `pyproject.toml`, served no purpose.
+- **Stale `__pycache__` cleaned** from deleted test files.
+
+### Fixed — Safety & Correctness
+
+- **`sync_turn` now forwards `**kwargs`** — was silently dropping extra keyword
+  arguments before passing to `_fan_out()`. Any Hermes core kwargs are now preserved.
+- **`_cmd_status` and `_cmd_list` None guards** — added defensive checks for
+  `load_config()` returning `None`, preventing `AttributeError` on `.get()` calls.
+- **Test `test_none_input` corrected** — `get_enabled_backends(None)` semantically
+  means "load from file" (returns active backends from `~/.hermes/config.yaml`),
+  not "return empty". Test renamed to `test_empty_dict_input` with correct semantics.
+
+### Removed
+
+- **`_get_active_backends()` deleted from `cli.py`** — duplicate of
+  `config.get_enabled_backends()`. 10 call sites migrated.
+- **Deferred `__version__` imports removed from CLI** — no longer needed with
+  `_version.py` extraction.
+
+### Metrics
+
+- **522 tests passing** (unchanged count, updated imports)
+- **97.19% coverage** (up from 97.12% — eliminated dead code paths)
+- **8 source modules**, clean import graph with no cycles
+- **ruff + mypy clean**, zero warnings
+
+## [0.11.0] — 2026-07-25
+
+### Changed — Test Consolidation (Streamlining)
+- **8 numbered pass files consolidated into 3 domain-based modules**.
+  Deleted `test_second_pass.py` through `test_ninth_pass.py` (1,778 lines)
+  and replaced them with:
+  - `test_config_robustness.py` — `_is_disabled`, `_normalize_multi_config`,
+    `load_full_config`, config parsing edge cases
+  - `test_adapter_robustness.py` — adapter close/config_schema lifecycle,
+    schema cache thread safety, re-entrancy guard, prefix routing
+  - `test_cli_robustness.py` — CLI command dispatch, `_cmd_add`/`_cmd_remove`/
+    `_cmd_status`/`_cmd_update` edge cases, `_get_active_backends` guards,
+    `_set_active_backends` coercion, `get_status_config` guards
+- **522 tests** (was 528 — some overlapping tests merged during consolidation).
+
+### Fixed — Robustness (Tenth Pass)
+- **`_cmd_remove` crash on non-dict `memory` config** —
+  `config.get("memory", {})` returned a non-dict value (string, int) from
+  corrupted config.yaml, then `memory_cfg.get("multi", {})` crashed with
+  `AttributeError`. Changed to `isinstance(memory_cfg, dict)` guard.
+
+### Changed — Type Safety
+- **mypy `warn_return_any` + `check_untyped_defs` enabled** in
+  `pyproject.toml`. All 14 `Returning Any from function declared to return`
+  errors fixed via explicit `cast()` on delegate return values in
+  `adapters.py`, `cli.py`, and `__init__.py`.
+- **mypy `mypy_path` and `explicit_package_bases` configured** — resolves
+  the long-standing "not a valid Python package name" error on this repo.
+
+### Changed — Documentation
+- **AGENT.md** — removed stale `_close_or_shutdown` reference, updated to
+  `_batch_shutdown` (removed in 0.8.0).
+
+## [0.10.4] — 2026-07-25
+
+### Changed — Test Coverage (Architectural Audit)
+- **528 tests** (was 517). 11 new tests in `test_audit_coverage.py` covering:
+  - Schema validation exception path (adapters that fail validation are skipped)
+  - `_fan_out` non-callable method handling
+  - `inspect.signature` exceptions on `on_memory_write` and `sync_turn`
+  - Generic backend discovery exceptions
+  - Update command error output (stderr and stdout fallback)
+  - Remove command non-dict guards (multi, backends, providers)
+- **Coverage: 97% → 99%** — all previously uncovered error paths now tested
+
+### Fixed — Test Organization
+- **Duplicate class name collision** — `TestGetActiveBackendsNonDict` existed in both
+  `test_fourth_pass.py` and `test_sixth_pass.py`. Renamed to
+  `TestGetActiveBackendsNonDictNestedFields` and `TestGetActiveBackendsNonDictInput`
+  respectively for clarity and to avoid pytest collection confusion.
+
+### Changed — Documentation
+- **AGENT.md** — removed stale `_close_or_shutdown` reference, updated to
+  `_batch_shutdown` (removed in 0.8.0)
+- **CHANGELOG.md** — corrected 0.9.0 formatting inconsistencies
+
 ## [0.10.3] — 2026-07-24
 
 ### Fixed — Robustness (Audit Pass 9)
@@ -206,22 +317,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - **`tool_error` standalone fallback returns JSON** — matches the real Hermes
   `tools.registry.tool_error` contract (`{"error": "..."}`).
-- **`_batch_shutdown` replaces `_close_or_shutdown`** — one shared
+- `_batch_shutdown` replaces `_close_or_shutdown` — one shared
   `ThreadPoolExecutor` for all subs instead of one executor per sub.
   Empty input is a no-op. Timeout and per-sub error isolation preserved.
-- **`get_tool_schemas()` uses double-checked locking** — cache read/write
+- `get_tool_schemas()` uses double-checked locking — cache read/write
   under `self._lock`; expensive delegate calls happen outside the lock.
-- **`_invalidate_schema_cache()` acquires the lock** — prevents TOCTOU race
+- `_invalidate_schema_cache()` acquires the lock — prevents TOCTOU race
   with concurrent `get_tool_schemas()`.
-- **`_loading` guard initialized in `__init__`** — removed `getattr` hack.
-- **`_normalise_multi_config` → `_normalize_multi_config`** — consistent
+- `_loading` guard initialized in `__init__` — removed `getattr` hack.
+- `_normalise_multi_config` → `_normalize_multi_config` — consistent
   American English naming.
-- **`_RetainDBAdapter.close()` override removed** — base class now has the
+- `_RetainDBAdapter.close()` override removed — base class now has the
   same `close()` → `shutdown()` fallback.
-- **CI: Python 3.10 added** to matrix (matches `requires-python >= 3.10`).
-- **CI: hermes-agent pinned** to `v2026.7.7.2` for API stability.
-- **CI: silent failure removed** — `pip install -r requirements.txt` errors
+- CI: Python 3.10 added to matrix (matches `requires-python >= 3.10`).
+- CI: hermes-agent pinned to `v2026.7.7.2` for API stability.
+- CI: silent failure removed — `pip install -r requirements.txt` errors
   are now visible.
+- CONTRIBUTING/AGENT.md updated for CI changes and removed stale
+  `_close_or_shutdown` reference.
 
 ### Fixed
 - **`_normalise_multi_config` crash** on non-dict `multi:` values

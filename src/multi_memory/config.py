@@ -17,6 +17,10 @@ import yaml
 
 logger = logging.getLogger(__name__)
 
+# Plugin directory names for Mnemosyne (may be installed under either name).
+# Centralized here — imported by adapters.py and discovery.py.
+MNEMOSYNE_PLUGIN_DIRS: tuple[str, ...] = ("mnemosyne", "hermes-mnemosyne")
+
 
 def _is_disabled(value: Any) -> bool:
     """Return True if a config value means 'this backend is disabled'.
@@ -87,6 +91,30 @@ def load_multi_config() -> dict[str, Any]:
     if not isinstance(memory_cfg, dict):
         return {}
     return memory_cfg
+
+
+def _normalize_multi_config(cfg: dict | None) -> dict:
+    """Return a unified backends dict from *either* config shape.
+
+    INVESTIGATION-C canonical  -  ``providers: list[str]`` (fork format)
+    PLAN spec                  -  ``multi.backends: dict[name -> enabled]``
+
+    Both formats are accepted.  ``multi.backends`` dict is canonical;
+    ``providers`` list is a legacy fallback.
+    Returns ``{}`` on absence or parse failure.
+    """
+    if not isinstance(cfg, dict):
+        return {}
+    multi_cfg = cfg.get("multi") or {}
+    if not isinstance(multi_cfg, dict):
+        return {}
+    backends = multi_cfg.get("backends") or {}
+    if isinstance(backends, dict) and backends:
+        return backends
+    providers = cfg.get("providers")
+    if isinstance(providers, list) and providers:
+        return {p: {} for p in providers if isinstance(p, str)}
+    return {}
 
 
 def get_enabled_backends(config: dict | None = None) -> list[str]:

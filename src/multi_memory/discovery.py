@@ -10,8 +10,7 @@ from __future__ import annotations
 from importlib.util import find_spec
 from pathlib import Path
 
-from multi_memory.adapters import MNEMOSYNE_PLUGIN_DIRS
-from multi_memory.config import _get_hermes_home
+from multi_memory.config import MNEMOSYNE_PLUGIN_DIRS, _get_hermes_home
 
 # Each entry: (config_key, module_path, label)
 _BACKEND_REGISTRY: list[tuple[str, str, str]] = [

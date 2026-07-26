@@ -1,5 +1,5 @@
 name: multi
-version: 0.10.3
+version: 0.12.0
 description: |
   Run multiple memory providers simultaneously (mnemosyne, mem0, holographic,
   honcho, openviking, hindsight, retaindb, byterover, supermemory).

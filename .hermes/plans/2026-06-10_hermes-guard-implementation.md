@@ -59,6 +59,7 @@ provides_tools: []
 ```python
 """Hermes Guard — real-time streaming output watchdog."""
 
+
 def register(ctx):
     """Standard Hermes plugin entry point."""
     pass
@@ -341,6 +342,7 @@ from typing import Any
 @dataclass
 class Verdict:
     """Tier 2 verdict for a flagged span."""
+
     span_text: str
     start_char: int
     end_char: int
@@ -353,6 +355,7 @@ class Verdict:
 @dataclass
 class AnalystResult:
     """Complete Tier 2 analysis."""
+
     verdicts: list[Verdict] = field(default_factory=list)
     raw_response: str = ""
     error: str | None = None
@@ -388,6 +391,7 @@ from .analyst import Verdict
 @dataclass
 class HealerResult:
     """Tier 3 healing result."""
+
     healed_text: str = ""
     original_text: str = ""
     healed_spans: list[dict] = None
@@ -510,8 +514,11 @@ def subscribe_turn_complete(callback: Callable[[dict], None]) -> None:
 def unsubscribe(callback: Callable) -> None:
     """Remove a previously registered callback."""
     guard = get_guard()
-    for lst in (guard.output_subscribers, guard.reasoning_subscribers,
-                guard.turn_complete_subscribers):
+    for lst in (
+        guard.output_subscribers,
+        guard.reasoning_subscribers,
+        guard.turn_complete_subscribers,
+    ):
         try:
             lst.remove(callback)
         except ValueError:
@@ -808,6 +815,7 @@ Hermes plugin code.
 # In multi-memory __init__.py — standard Hermes pattern
 try:
     from hermes_guard.subscriptions import subscribe_stream_output
+
     subscribe_stream_output(_fan_output)
 except ImportError:
     pass  # Guard not installed — sync_turn() still works

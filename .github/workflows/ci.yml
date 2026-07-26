@@ -89,4 +89,4 @@ jobs:
           PYTHONPATH: "/tmp/hermes-agent:${{ github.workspace }}/src"
         run: |
           python -m pytest tests/ -v --tb=short \
-            --cov=multi_memory --cov-report=term-missing --cov-fail-under=90
+            --cov=multi_memory --cov-report=term-missing --cov-fail-under=95

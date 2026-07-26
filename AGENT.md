@@ -105,7 +105,7 @@ when a lifecycle callback triggers another method.
 # Add a backend at runtime
 provider.add_provider(mem0_adapter)
 
-# Remove a backend (shuts it down, cleans up tools)
+# Remove a backend (shuts it down via _batch_shutdown)
 provider.remove_provider("mem0")
 
 # Lookup
@@ -219,19 +219,15 @@ sub.method = lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("fail"))
 | `tests/test_adapters.py` | Adapter tests, provider tests, lifecycle hook tests |
 | `tests/test_adapters_extra.py` | Introspection, fan-out, config error path tests |
 | `tests/test_api_parity.py` | ABC parity: backup_paths, rewound, JSON contract, batch shutdown |
+| `tests/test_audit_coverage.py` | Error paths: schema validation, _fan_out, inspect.signature, discovery |
 | `tests/test_budget.py` | ToolBudgetWarning + NamespaceValidator tests |
 | `tests/test_cli.py` | CLI subcommand tests |
 | `tests/test_config.py` | Config loading, format precedence, error paths |
+| `tests/test_config_robustness.py` | `_is_disabled` semantics (bool/int/float/string/off/disabled), `_normalize_multi_config` non-dict guards, unhashable providers, `load_full_config` edge cases |
 | `tests/test_discovery.py` | Backend discovery + installation detection tests |
-| `tests/test_fourth_pass.py` | Non-dict config guards, _is_disabled case-insensitivity |
-| `tests/test_fifth_pass.py` | CLI display branches, _cmd_update, dispatch coverage |
-| `tests/test_sixth_pass.py` | isinstance guards on malformed YAML (get_status_config, _cmd_add, _install_dependencies) |
-| `tests/test_seventh_pass.py` | _is_disabled off/disabled, _set_active_backends non-dict coercion, _cmd_setup_wizard/backend non-dict memory guards |
-| `tests/test_eighth_pass.py` | Non-string/unhashable items in providers list (TypeError crash fix) |
-| `tests/test_ninth_pass.py` | Float zero (0.0) disable value, int/bool regression tests |
+| `tests/test_adapter_robustness.py` | Adapter close/config_schema lifecycle, schema cache thread safety, re-entrancy guard, prefix routing, `_renorm_schemas` missing name |
+| `tests/test_cli_robustness.py` | CLI dispatch, `_cmd_add/remove/status/update` edge cases, `_get_active_backends` guards, `_set_active_backends` coercion, `get_status_config` guards, `_install_dependencies` guards |
 | `tests/test_generic_adapter.py` | `_GenericAdapter` + `_try_generic_backend()` tests |
-| `tests/test_second_pass.py` | Non-dict multi, _is_disabled semantics, close() fallback |
-| `tests/test_third_pass.py` | Re-entrancy guard, schema cache thread safety, config reader |
 
 | `.github/workflows/ci.yml` | CI — Python 3.10/3.11/3.12/3.13/3.14, `astral-sh/ruff-action`, actions v6, pytest + 90% coverage, mypy, hermes-agent pinned to `v2026.7.7.2` |
 

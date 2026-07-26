@@ -17,14 +17,14 @@ import importlib
 import inspect
 import logging
 from importlib.util import find_spec
-from typing import Any
+from typing import Any, cast
+
+from multi_memory.config import MNEMOSYNE_PLUGIN_DIRS
 
 logger = logging.getLogger(__name__)
 
 # Plugin directory names Mnemosyne may be installed under.
-# ``mnemosyne`` is the canonical name; ``hermes-mnemosyne`` is the
-# pip-package-matching name some install scripts create.
-MNEMOSYNE_PLUGIN_DIRS: tuple[str, ...] = ("mnemosyne", "hermes-mnemosyne")
+# Centralized in config.py; re-exported here for backward compatibility.
 
 
 def _try_import(module: str, cls: str) -> type | None:
@@ -99,10 +99,10 @@ class _SubProviderAdapter:
 
     @property
     def name(self) -> str:
-        return self._delegate.name
+        return cast(str, self._delegate.name)
 
     def is_available(self) -> bool:
-        return self._delegate.is_available()
+        return cast(bool, self._delegate.is_available())
 
     def initialize(self, session_id: str, **kwargs: Any) -> None:
         self._delegate.initialize(session_id=session_id, **kwargs)
@@ -118,10 +118,10 @@ class _SubProviderAdapter:
         # Pass full name through — most backends self-prefix their tools
         # (mnemosyne_recall, mem0_search, etc.). Backends that don't
         # self-prefix (holographic) override this method.
-        return self._delegate.handle_tool_call(tool_name, args, **kwargs)
+        return cast(str, self._delegate.handle_tool_call(tool_name, args, **kwargs))
 
     def prefetch(self, query: str, *, session_id: str = "") -> str:
-        return self._delegate.prefetch(query, session_id=session_id)
+        return cast(str, self._delegate.prefetch(query, session_id=session_id))
 
     def queue_prefetch(self, query: str, *, session_id: str = "") -> None:
         self._delegate.queue_prefetch(query, session_id=session_id)
@@ -149,7 +149,7 @@ class _SubProviderAdapter:
             )
 
     def system_prompt_block(self) -> str:
-        return self._delegate.system_prompt_block()
+        return cast(str, self._delegate.system_prompt_block())
 
     def on_turn_start(self, turn_number: int = 0, message: str = "", **kwargs: Any) -> None:
         self._delegate.on_turn_start(turn_number, message, **kwargs)
@@ -194,7 +194,7 @@ class _SubProviderAdapter:
         )
 
     def on_pre_compress(self, messages: list[dict[str, Any]]) -> str:
-        return self._delegate.on_pre_compress(messages)
+        return cast(str, self._delegate.on_pre_compress(messages))
 
     # -- Introspection helpers (cached) ------------------------------------
 
@@ -264,8 +264,6 @@ class _SubProviderAdapter:
 
     def get_config_schema(self) -> list[dict]:
         """Forward the delegate's config schema for ``hermes memory setup``."""
-        from typing import cast
-
         fn = getattr(self._delegate, "get_config_schema", None)
         return list(cast(list[dict], fn())) if callable(fn) else []
 
@@ -277,8 +275,6 @@ class _SubProviderAdapter:
 
     def backup_paths(self) -> list[str]:
         """Forward external paths declared by the delegate for `hermes backup`."""
-        from typing import cast
-
         fn = getattr(self._delegate, "backup_paths", None)
         return list(cast(list[str], fn())) if callable(fn) else []
 
@@ -308,11 +304,11 @@ class _GenericAdapter(_SubProviderAdapter):
 
     def get_tool_schemas(self) -> list[dict]:
         # Don't prefix — the provider handles its own tool names
-        return self._delegate.get_tool_schemas()
+        return cast(list[dict], self._delegate.get_tool_schemas())
 
     def handle_tool_call(self, tool_name: str, args: dict, **kwargs: Any) -> str:
         # Don't strip prefix — pass through as-is
-        return self._delegate.handle_tool_call(tool_name, args, **kwargs)
+        return cast(str, self._delegate.handle_tool_call(tool_name, args, **kwargs))
 
 
 # ── Concrete adapters ──────────────────────────────────────────────────────
@@ -367,7 +363,7 @@ class _MnemosyneAdapter(_SubProviderAdapter):
     def get_tool_schemas(self) -> list[dict]:
         # Mnemosyne's tools are ALREADY prefixed ("mnemosyne_recall"),
         # don't double-prefix like the base class does.
-        return self._delegate.get_tool_schemas()
+        return cast(list[dict], self._delegate.get_tool_schemas())
 
 
 class _Mem0Adapter(_SubProviderAdapter):
@@ -389,7 +385,7 @@ class _HolographicAdapter(_SubProviderAdapter):
         pfx = f"{self.PREFIX}_"
         if tool_name.startswith(pfx):
             tool_name = tool_name[len(pfx) :]
-        return self._delegate.handle_tool_call(tool_name, args, **kwargs)
+        return cast(str, self._delegate.handle_tool_call(tool_name, args, **kwargs))
 
 
 class _HonchoAdapter(_SubProviderAdapter):

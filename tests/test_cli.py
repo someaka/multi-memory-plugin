@@ -473,25 +473,25 @@ class TestConfigHelpers:
         _remove_backend_from_config("honcho", memory_cfg)
         assert "provider" not in memory_cfg
 
-    def test_get_active_backends_multi_format(self):
-        """_get_active_backends reads multi.backends dict."""
-        from multi_memory.cli import _get_active_backends
+    def test_get_enabled_backends_multi_format(self):
+        """get_enabled_backends reads multi.backends dict."""
+        from multi_memory.config import get_enabled_backends
 
-        active = _get_active_backends({"multi": {"backends": {"mnemosyne": {}, "holographic": {}}}})
+        active = get_enabled_backends({"multi": {"backends": {"mnemosyne": {}, "holographic": {}}}})
         assert active == ["mnemosyne", "holographic"]
 
-    def test_get_active_backends_providers_format(self):
-        """_get_active_backends reads providers list."""
-        from multi_memory.cli import _get_active_backends
+    def test_get_enabled_backends_providers_format(self):
+        """get_enabled_backends reads providers list."""
+        from multi_memory.config import get_enabled_backends
 
-        active = _get_active_backends({"providers": ["mem0", "honcho"]})
+        active = get_enabled_backends({"providers": ["mem0", "honcho"]})
         assert active == ["mem0", "honcho"]
 
-    def test_get_active_backends_respects_disabled(self):
-        """_get_active_backends skips disabled backends."""
-        from multi_memory.cli import _get_active_backends
+    def test_get_enabled_backends_respects_disabled(self):
+        """get_enabled_backends skips disabled backends."""
+        from multi_memory.config import get_enabled_backends
 
-        active = _get_active_backends({"multi": {"backends": {"mnemosyne": True, "mem0": False}}})
+        active = get_enabled_backends({"multi": {"backends": {"mnemosyne": True, "mem0": False}}})
         assert active == ["mnemosyne"]
 
 

@@ -26,9 +26,10 @@ Or use the INVESTIGATION-C canonical::
 
 from __future__ import annotations
 
+import concurrent.futures
 import logging
 import threading
-from typing import Any
+from typing import Any, cast
 
 try:
     from tools.registry import tool_error
@@ -136,6 +137,7 @@ except ImportError:  # pragma: no cover — standalone stub
             return []
 
 
+from ._version import __version__
 from .adapters import (
     _ByteRoverAdapter,
     _GenericAdapter,
@@ -150,7 +152,7 @@ from .adapters import (
     _SupermemoryAdapter,
 )
 from .budget import ToolBudgetWarning
-from .config import _is_disabled
+from .config import _is_disabled, _normalize_multi_config
 
 __all__ = [
     "MultiMemoryProvider",
@@ -158,7 +160,10 @@ __all__ = [
     "register",
 ]
 
-__version__ = "0.10.3"
+# ── Private internals (accessible but not part of public API) ────────
+# These functions are prefixed with underscore (private) but are imported
+# by tests and downstream tooling via `from multi_memory import _normalize_multi_config`.
+# They remain outside __all__ to keep the public API minimal.
 
 logger = logging.getLogger(__name__)
 
@@ -452,8 +457,9 @@ class MultiMemoryProvider(MemoryProvider):
                     tool_name,
                     exc,
                 )
-        return tool_error(
-            f"No sub-provider handles tool '{tool_name}' — tried: {'; '.join(errors)}"
+        return cast(
+            str,
+            tool_error(f"No sub-provider handles tool '{tool_name}' — tried: {'; '.join(errors)}"),
         )
 
     # ─── Runtime sub-provider management ──────────────────────────────────
@@ -554,6 +560,7 @@ class MultiMemoryProvider(MemoryProvider):
             assistant_content,
             session_id=session_id,
             messages=messages,
+            **kwargs,
         )
 
     def on_turn_start(self, turn_number: int = 0, message: str = "", **kwargs: Any) -> None:
@@ -599,8 +606,6 @@ class MultiMemoryProvider(MemoryProvider):
 
     def backup_paths(self) -> list[str]:
         """Merge and deduplicate external paths from all sub-providers."""
-        from typing import cast
-
         paths: list[str] = []
         for sub in self._snapshot():
             fn = getattr(sub, "backup_paths", None)
@@ -644,7 +649,6 @@ def _batch_shutdown(subs: list[_SubProviderAdapter], timeout: float = 10.0) -> N
     """
     if not subs:
         return
-    import concurrent.futures
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(subs), 4)) as executor:
         futures = {executor.submit(_close_one, sub): sub for sub in reversed(subs)}
@@ -661,30 +665,6 @@ def _batch_shutdown(subs: list[_SubProviderAdapter], timeout: float = 10.0) -> N
             if exc is not None:
                 sub = futures[future]
                 logger.warning("[multi-memory] shutdown %s: %s", sub.name, exc)
-
-
-def _normalize_multi_config(cfg: dict | None) -> dict:
-    """Return a unified backends dict from *either* config shape.
-
-    INVESTIGATION-C canonical  -  ``providers: list[str]`` (fork format)
-    PLAN spec                  -  ``multi.backends: dict[name -> enabled]``
-
-    Both formats are accepted.  ``multi.backends`` dict is canonical;
-    ``providers`` list is a legacy fallback.
-    Returns ``{}`` on absence or parse failure.
-    """
-    if not isinstance(cfg, dict):
-        return {}
-    multi_cfg = cfg.get("multi") or {}
-    if not isinstance(multi_cfg, dict):
-        return {}
-    backends = multi_cfg.get("backends") or {}
-    if isinstance(backends, dict) and backends:
-        return backends
-    providers = cfg.get("providers")
-    if isinstance(providers, list) and providers:
-        return {p: {} for p in providers if isinstance(p, str)}
-    return {}
 
 
 def _load_backends_from_config(config: dict) -> list[_SubProviderAdapter]:

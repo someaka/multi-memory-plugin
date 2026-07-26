@@ -315,10 +315,10 @@ class TestInstallDepsNonDictMeta:
 
         with (
             mock.patch("multi_memory.cli._find_provider_dir", return_value=plugin_dir),
-            mock.patch("multi_memory.cli.subprocess.run"),
+            mock.patch("multi_memory.cli.subprocess.run") as mock_run,
         ):
-            # Should not raise
             _install_dependencies("test_plugin")
+        mock_run.assert_not_called()
 
 
 class TestInstallDepsNonDictExtDeps:
@@ -333,10 +333,10 @@ class TestInstallDepsNonDictExtDeps:
 
         with (
             mock.patch("multi_memory.cli._find_provider_dir", return_value=plugin_dir),
-            mock.patch("multi_memory.cli.subprocess.run"),
+            mock.patch("multi_memory.cli.subprocess.run") as mock_run,
         ):
-            # Should not raise
             _install_dependencies("test_plugin")
+        mock_run.assert_not_called()
 
     def test_ext_deps_non_dict_item_skipped(self, tmp_path):
         """Non-dict items in ext_deps are skipped."""
@@ -344,7 +344,8 @@ class TestInstallDepsNonDictExtDeps:
         plugin_dir.mkdir()
         yaml_file = plugin_dir / "plugin.yaml"
         yaml_file.write_text(
-            "pip_dependencies: []\n"
+            "pip_dependencies:\n"
+            "  - nonexistent-pkg-xyz\n"
             "external_dependencies:\n"
             "  - invalid\n"
             "  - name: valid\n"
@@ -353,10 +354,12 @@ class TestInstallDepsNonDictExtDeps:
 
         with (
             mock.patch("multi_memory.cli._find_provider_dir", return_value=plugin_dir),
-            mock.patch("multi_memory.cli.subprocess.run"),
+            mock.patch("multi_memory.cli.subprocess.run") as mock_run,
+            mock.patch("shutil.which", return_value="/usr/bin/uv"),
         ):
-            # Should not raise, should skip invalid item
             _install_dependencies("test_plugin")
+        # pip install + one valid ext dep check = 2 calls; invalid item skipped
+        assert mock_run.call_count == 2
 
 
 class TestSetActiveBackendsNonDictGuards:
@@ -411,10 +414,10 @@ class TestSetCmdSetupWizardNonDictMemory:
             mock.patch("multi_memory.cli.load_config", return_value={"memory": "invalid"}),
             mock.patch("multi_memory.cli._get_available_backends", return_value=[]),
         ):
-            # Should not raise
             from multi_memory.cli import _cmd_setup_wizard
 
             _cmd_setup_wizard(args)
+        assert "No memory backend" in capsys.readouterr().out
 
 
 class TestSetCmdSetupBackendNonDictMemory:
@@ -427,10 +430,10 @@ class TestSetCmdSetupBackendNonDictMemory:
             mock.patch("multi_memory.cli.load_config", return_value={"memory": "invalid"}),
             mock.patch("multi_memory.cli._get_available_backends", return_value=[]),
         ):
-            # Should not raise
             from multi_memory.cli import _cmd_setup_backend
 
             _cmd_setup_backend(args)
+        assert "not found" in capsys.readouterr().out
 
 
 class TestMultiCommandAllDispatch:
@@ -438,64 +441,68 @@ class TestMultiCommandAllDispatch:
 
     def test_dispatch_status(self, capsys):
         """Status command is dispatched correctly."""
-        args = argparse.Namespace(command="status", json_output=False)
+        args = argparse.Namespace(multi_command="status", json_output=False)
         with (
             mock.patch("multi_memory.cli.load_config", return_value={}),
             mock.patch("multi_memory.cli._get_available_backends", return_value=[]),
         ):
             multi_command(args)
-        # Should not raise
+        assert "Memory status" in capsys.readouterr().out
 
     def test_dispatch_list(self, capsys):
         """List command is dispatched correctly."""
-        args = argparse.Namespace(command="list", json_output=False)
+        args = argparse.Namespace(multi_command="list", json_output=False, show_all=False)
         with (
             mock.patch("multi_memory.cli.load_config", return_value={}),
             mock.patch("multi_memory.cli._get_available_backends", return_value=[]),
         ):
             multi_command(args)
-        # Should not raise
+        assert "Available memory backends" in capsys.readouterr().out
 
     def test_dispatch_add(self, capsys):
         """Add command is dispatched correctly."""
-        args = argparse.Namespace(command="add", backend="test", name="test")
+        args = argparse.Namespace(multi_command="add", backend="nonexistent")
         with (
             mock.patch("multi_memory.cli.load_config", return_value={}),
             mock.patch("multi_memory.cli.save_config"),
         ):
             multi_command(args)
-        # Should not raise
+        assert "Unknown backend" in capsys.readouterr().out
 
     def test_dispatch_remove(self, capsys):
         """Remove command is dispatched correctly."""
-        args = argparse.Namespace(command="remove", backend="test")
+        args = argparse.Namespace(multi_command="remove", backend="test", force=True)
         with (
-            mock.patch("multi_memory.cli.load_config", return_value={}),
+            mock.patch(
+                "multi_memory.cli.load_config",
+                return_value={"memory": {"multi": {"backends": {}}}},
+            ),
             mock.patch("multi_memory.cli.save_config"),
         ):
             multi_command(args)
-        # Should not raise
+        assert "not in the active config" in capsys.readouterr().out
 
     def test_dispatch_update(self, capsys):
         """Update command is dispatched correctly."""
-        args = argparse.Namespace(command="update")
-        with mock.patch("multi_memory.cli.subprocess.run"):
+        args = argparse.Namespace(multi_command="update", check=False)
+        with mock.patch("multi_memory.cli.subprocess.run") as mock_run:
+            mock_run.return_value = mock.MagicMock(returncode=0, stdout="updated", stderr="")
             multi_command(args)
-        # Should not raise
+        assert "Updating" in capsys.readouterr().out
 
     def test_dispatch_setup(self, capsys):
         """Setup command is dispatched correctly."""
-        args = argparse.Namespace(command="setup", backend=None)
+        args = argparse.Namespace(multi_command="setup", backend=None)
         with (
             mock.patch("multi_memory.cli.load_config", return_value={}),
             mock.patch("multi_memory.cli._get_available_backends", return_value=[]),
         ):
             multi_command(args)
-        # Should not raise
+        assert "No memory backend" in capsys.readouterr().out
 
     def test_dispatch_invalid(self, capsys):
         """Invalid command prints help."""
-        args = argparse.Namespace(command="invalid")
+        args = argparse.Namespace(multi_command="invalid")
         multi_command(args)
         captured = capsys.readouterr()
         assert "Usage" in captured.out or "multi" in captured.out
@@ -636,7 +643,9 @@ class TestCmdStatusDisplayBranches:
             mock.patch("multi_memory.cli._get_available_backends", return_value=[]),
         ):
             _cmd_status(args)
-        # Should not raise
+        out = capsys.readouterr().out
+        assert "legacy" in out
+        assert "⚠" in out
 
     def test_status_legacy_provider_with_dict_value(self, capsys):
         """Legacy provider with dict config value displays correctly."""
@@ -652,7 +661,8 @@ class TestCmdStatusDisplayBranches:
             mock.patch("multi_memory.cli._get_available_backends", return_value=[]),
         ):
             _cmd_status(args)
-        # Should not raise
+        out = capsys.readouterr().out
+        assert "legacy" in out
 
     def test_status_legacy_provider_with_list_value(self, capsys):
         """Legacy provider with list config value displays correctly."""
@@ -668,7 +678,9 @@ class TestCmdStatusDisplayBranches:
             mock.patch("multi_memory.cli._get_available_backends", return_value=[]),
         ):
             _cmd_status(args)
-        # Should not raise
+        out = capsys.readouterr().out
+        assert "legacy" in out
+        assert "a, b, c" in out
 
     def test_status_legacy_provider_via_get_status_config(self, capsys):
         """Legacy provider with get_status_config method uses it."""
@@ -676,6 +688,8 @@ class TestCmdStatusDisplayBranches:
         config = {
             "memory": {
                 "provider": "legacy",
+                "providers": ["mnemosyne"],
+                "legacy": {"some": "config"},
             }
         }
         mock_provider = mock.MagicMock()
@@ -689,7 +703,8 @@ class TestCmdStatusDisplayBranches:
             ),
         ):
             _cmd_status(args)
-        # Should not raise
+        out = capsys.readouterr().out
+        assert "status: ok" in out
 
     def test_status_backend_with_config(self, capsys):
         """Backend with config displays config."""
@@ -705,7 +720,9 @@ class TestCmdStatusDisplayBranches:
             mock.patch("multi_memory.cli._get_available_backends", return_value=[]),
         ):
             _cmd_status(args)
-        # Should not raise
+        out = capsys.readouterr().out
+        assert "mnemosyne" in out
+        assert "Config:" in out
 
     def test_status_backend_not_installed(self, capsys):
         """Backend not installed shows not installed message."""
@@ -720,7 +737,8 @@ class TestCmdStatusDisplayBranches:
             mock.patch("multi_memory.cli._get_available_backends", return_value=[]),
         ):
             _cmd_status(args)
-        # Should not raise
+        out = capsys.readouterr().out
+        assert "NOT installed" in out
 
     def test_status_backend_available(self, capsys):
         """Available backend shows available status."""
@@ -741,7 +759,8 @@ class TestCmdStatusDisplayBranches:
             ),
         ):
             _cmd_status(args)
-        # Should not raise
+        out = capsys.readouterr().out
+        assert "available ✓" in out
 
     def test_status_backend_not_available_missing_env(self, capsys):
         """Not available backend with missing env vars shows help."""
@@ -765,7 +784,10 @@ class TestCmdStatusDisplayBranches:
             ),
         ):
             _cmd_status(args)
-        # Should not raise
+        out = capsys.readouterr().out
+        assert "not available ✗" in out
+        assert "Missing env vars" in out
+        assert "TEST_API_KEY" in out
 
     def test_status_backend_env_var_set(self, capsys):
         """Not available backend with env var set shows env var status."""
@@ -790,7 +812,8 @@ class TestCmdStatusDisplayBranches:
             mock.patch.dict("os.environ", {"TEST_API_KEY": "test_value"}),
         ):
             _cmd_status(args)
-        # Should not raise
+        out = capsys.readouterr().out
+        assert "✓ TEST_API_KEY" in out
 
     def test_status_backend_config_with_list_value(self, capsys):
         """Backend config with list value displays correctly."""
@@ -806,7 +829,8 @@ class TestCmdStatusDisplayBranches:
             mock.patch("multi_memory.cli._get_available_backends", return_value=[]),
         ):
             _cmd_status(args)
-        # Should not raise
+        out = capsys.readouterr().out
+        assert "a, b" in out
 
     def test_status_installed_plugins_list(self, capsys):
         """Installed plugins list displays correctly."""
@@ -822,7 +846,9 @@ class TestCmdStatusDisplayBranches:
             ),
         ):
             _cmd_status(args)
-        # Should not raise
+        out = capsys.readouterr().out
+        assert "Installed plugins" in out
+        assert "test" in out
 
     def test_status_backend_config_with_nested_dict(self, capsys):
         """Backend config with nested dict displays correctly."""
@@ -838,20 +864,21 @@ class TestCmdStatusDisplayBranches:
             mock.patch("multi_memory.cli._get_available_backends", return_value=[]),
         ):
             _cmd_status(args)
-        # Should not raise
+        out = capsys.readouterr().out
+        assert "nested" in out
 
-    def test_status_version_import_fail(self, capsys):
-        """Version import failure is handled gracefully."""
+    def test_status_version_displayed(self, capsys):
+        """Version is displayed in status output."""
         args = argparse.Namespace(json_output=False)
         config = {"memory": {}}
 
         with (
             mock.patch("multi_memory.cli.load_config", return_value=config),
             mock.patch("multi_memory.cli._get_available_backends", return_value=[]),
-            mock.patch("multi_memory.__version__", side_effect=ImportError()),
         ):
             _cmd_status(args)
-        # Should not raise
+        out = capsys.readouterr().out
+        assert "0.13.0" in out
 
     def test_status_json_version(self, capsys):
         """JSON status includes version from _version module."""
@@ -882,7 +909,9 @@ class TestCmdStatusDisplayBranches:
             mock.patch("multi_memory.cli._get_available_backends", return_value=[]),
         ):
             _cmd_status(args)
-        # Should not raise
+        out = capsys.readouterr().out
+        assert "legacy" in out
+        assert "⚠" in out
 
 
 class TestCmdAddEdgeCases:

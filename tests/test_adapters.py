@@ -480,6 +480,7 @@ class TestLifecycleHooks:
             if i == 0:
                 sub.queue_prefetch.side_effect = RuntimeError("queue fail")
         provider.queue_prefetch("test", session_id="s1")  # should not raise
+        provider._subs[1].queue_prefetch.assert_called_once()
 
     def test_sync_turn_exception_isolation(self, provider):
         """sync_turn handles per-sub exceptions."""
@@ -487,36 +488,42 @@ class TestLifecycleHooks:
             if i == 0:
                 sub.sync_turn.side_effect = RuntimeError("sync fail")
         provider.sync_turn("u", "a", session_id="s1")  # should not raise
+        provider._subs[1].sync_turn.assert_called_once()
 
     def test_on_memory_write_exception_isolation(self, provider):
         for i, sub in enumerate(provider._subs):
             if i == 0:
                 sub.on_memory_write.side_effect = RuntimeError("write fail")
         provider.on_memory_write("add", "memory", "x")  # should not raise
+        provider._subs[1].on_memory_write.assert_called_once()
 
     def test_on_turn_start_exception_isolation(self, provider):
         for i, sub in enumerate(provider._subs):
             if i == 0:
                 sub.on_turn_start.side_effect = RuntimeError("turn fail")
         provider.on_turn_start(1, "msg")  # should not raise
+        provider._subs[1].on_turn_start.assert_called_once()
 
     def test_on_session_end_exception_isolation(self, provider):
         for i, sub in enumerate(provider._subs):
             if i == 0:
                 sub.on_session_end.side_effect = RuntimeError("session end fail")
         provider.on_session_end([{"role": "user"}])  # should not raise
+        provider._subs[1].on_session_end.assert_called_once()
 
     def test_on_session_switch_exception_isolation(self, provider):
         for i, sub in enumerate(provider._subs):
             if i == 0:
                 sub.on_session_switch.side_effect = RuntimeError("switch fail")
         provider.on_session_switch("new-sid")  # should not raise
+        provider._subs[1].on_session_switch.assert_called_once()
 
     def test_on_delegation_exception_isolation(self, provider):
         for i, sub in enumerate(provider._subs):
             if i == 0:
                 sub.on_delegation.side_effect = RuntimeError("delegation fail")
         provider.on_delegation("task", "result")  # should not raise
+        provider._subs[1].on_delegation.assert_called_once()
 
     def test_on_memory_write_with_metadata(self, provider):
         """on_memory_write passes metadata to all subs."""
@@ -1202,7 +1209,9 @@ class TestHolographicAdapterLifecycle:
         return _HolographicAdapter()
 
     def test_shutdown(self, adapter):
-        adapter.shutdown()  # should not raise
+        adapter._delegate.shutdown = mock.MagicMock()
+        adapter.shutdown()
+        adapter._delegate.shutdown.assert_called_once()
 
     def test_on_turn_start(self, adapter):
         adapter._delegate.on_turn_start = mock.MagicMock()
@@ -1210,7 +1219,9 @@ class TestHolographicAdapterLifecycle:
         adapter._delegate.on_turn_start.assert_called_once_with(1, "msg")
 
     def test_on_session_end(self, adapter):
-        adapter.on_session_end([])  # should not raise
+        adapter._delegate.on_session_end = mock.MagicMock()
+        adapter.on_session_end([])
+        adapter._delegate.on_session_end.assert_called_once_with([])
 
     def test_on_session_switch(self, adapter):
         adapter._delegate.on_session_switch = mock.MagicMock()

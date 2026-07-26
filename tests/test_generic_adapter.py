@@ -131,11 +131,13 @@ class TestGenericAdapter:
         provider = FakeProvider()
         adapter = _GenericAdapter(provider, "custom_backend")
         adapter.initialize(session_id="test-123")
+        assert adapter.name == "custom_backend"
 
     def test_shutdown(self):
         provider = FakeProvider()
         adapter = _GenericAdapter(provider, "custom_backend")
         adapter.shutdown()
+        assert adapter.is_available() is True
 
     def test_system_prompt_block(self):
         provider = FakeProvider()

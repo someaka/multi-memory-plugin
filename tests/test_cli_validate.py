@@ -59,7 +59,7 @@ class TestCreateAdapter:
 class TestValidateCommand:
     """Tests for the validate command."""
 
-    def test_validate_no_backends(self):
+    def test_validate_no_backends(self, capsys):
         """Validate with no active backends succeeds."""
         args = MagicMock()
 
@@ -68,8 +68,9 @@ class TestValidateCommand:
             patch("multi_memory.cli.get_enabled_backends", return_value=[]),
         ):
             _cmd_validate(args)
+        assert "Configuration valid" in capsys.readouterr().out
 
-    def test_validate_with_active_backends(self):
+    def test_validate_with_active_backends(self, capsys):
         """Validate with active backends checks each one."""
         args = MagicMock()
 
@@ -82,8 +83,11 @@ class TestValidateCommand:
             patch("multi_memory.cli.create_adapter", return_value=mock_adapter),
         ):
             _cmd_validate(args)
+        out = capsys.readouterr().out
+        assert "mnemosyne: OK" in out
+        assert "All backends validated" in out
 
-    def test_validate_unavailable_backend(self):
+    def test_validate_unavailable_backend(self, capsys):
         """Validate reports unavailable backends."""
         args = MagicMock()
 
@@ -96,8 +100,11 @@ class TestValidateCommand:
             patch("multi_memory.cli.create_adapter", return_value=mock_adapter),
         ):
             _cmd_validate(args)
+        out = capsys.readouterr().out
+        assert "not available" in out
+        assert "1 issue(s)" in out
 
-    def test_validate_adapter_creation_failure(self):
+    def test_validate_adapter_creation_failure(self, capsys):
         """Validate handles adapter creation failures."""
         args = MagicMock()
 
@@ -107,15 +114,18 @@ class TestValidateCommand:
             patch("multi_memory.cli.create_adapter", return_value=None),
         ):
             _cmd_validate(args)
+        out = capsys.readouterr().out
+        assert "adapter creation failed" in out
 
-    def test_validate_invalid_config(self):
+    def test_validate_invalid_config(self, capsys):
         """Validate handles invalid config gracefully."""
         args = MagicMock()
 
         with patch("multi_memory.cli.load_config", return_value={"memory": "invalid"}):
             _cmd_validate(args)
+        assert "Configuration error" in capsys.readouterr().out
 
-    def test_validate_multiple_backends(self):
+    def test_validate_multiple_backends(self, capsys):
         """Validate can check multiple backends."""
         args = MagicMock()
 
@@ -132,8 +142,11 @@ class TestValidateCommand:
         ):
             _cmd_validate(args)
             assert mock_create.call_count == 2
+        out = capsys.readouterr().out
+        assert "mnemosyne: OK" in out
+        assert "mem0: OK" in out
 
-    def test_validate_adapter_raises_exception(self):
+    def test_validate_adapter_raises_exception(self, capsys):
         """Validate catches exceptions during adapter checks."""
         args = MagicMock()
 
@@ -146,3 +159,6 @@ class TestValidateCommand:
             patch("multi_memory.cli.create_adapter", return_value=mock_adapter),
         ):
             _cmd_validate(args)
+        out = capsys.readouterr().out
+        assert "connection refused" in out
+        assert "1 issue(s)" in out

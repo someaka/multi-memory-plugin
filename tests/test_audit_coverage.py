@@ -237,11 +237,11 @@ class TestRemoveCommandNonDictGuards:
 
         with (
             mock.patch("multi_memory.cli.load_config", return_value=config),
-            mock.patch("multi_memory.cli.save_config"),
+            mock.patch("multi_memory.cli.save_config") as mock_save,
             mock.patch("builtins.print"),
         ):
-            # Should not crash
             _cmd_remove(args)
+            assert mock_save.called
 
     def test_remove_with_non_list_providers(self):
         """Remove command handles non-list providers gracefully."""
@@ -260,8 +260,8 @@ class TestRemoveCommandNonDictGuards:
 
         with (
             mock.patch("multi_memory.cli.load_config", return_value=config),
-            mock.patch("multi_memory.cli.save_config"),
+            mock.patch("multi_memory.cli.save_config") as mock_save,
             mock.patch("builtins.print"),
         ):
-            # Should not crash
             _cmd_remove(args)
+            assert mock_save.called

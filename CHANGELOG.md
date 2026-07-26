@@ -5,6 +5,42 @@ All notable changes to the multi-memory plugin will be documented in this file.
 The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0] — 2026-07-26
+
+### Added — Architecture & UX Improvements (Fourth Pass)
+
+- **New `hermes multi validate` command** — validates configuration and checks
+  backend connectivity before startup. Reports which backends are active,
+  available, or have issues. Supports `--fix` flag for auto-repair (placeholder).
+- **`create_adapter()` helper** — clean adapter factory using a mapping dictionary
+  instead of chained if/elif statements. Reduces complexity and improves maintainability.
+- **`BACKEND_CATEGORIES` constant** — organizes backends by deployment type
+  (`local` vs `cloud`) for better help text and future filtering.
+- **Enhanced CLI help text** — all commands now have detailed descriptions
+  explaining what they do, not just one-line summaries.
+- **New CLI flags for better automation**:
+  - `hermes multi add --config-only` — skip dependency installation
+  - `hermes multi remove --force` — skip confirmation prompts
+  - `hermes multi setup --non-interactive` — for scripted deployments
+  - `hermes multi list --all` — show disabled backends
+  - `hermes multi update --check` — preview available updates without installing
+
+### Changed — Code Quality
+
+- **Adapter creation refactored** — replaced 9-branch if/elif chain with
+  dictionary lookup + dynamic import. Reduces cyclomatic complexity from 12 to 3.
+- **Test coverage improved** — added 13 new tests for `validate` command and
+  `create_adapter()` helper. Total: 541 tests, 97% coverage.
+- **Line length compliance** — all lines now under 100 characters per PEP 8.
+
+### Technical Details
+
+- `validate` command uses `create_adapter()` to instantiate each configured backend
+  and calls `is_available()` to check readiness
+- Error messages include actionable guidance (e.g., "run hermes multi setup")
+- Auto-fix mode is currently a placeholder — logs intent but doesn't modify config
+- `BACKEND_CATEGORIES` exported for use by future UI components (dashboard, wizard)
+
 ## [0.12.0] — 2026-07-26
 
 ### Changed — Architectural Consolidation

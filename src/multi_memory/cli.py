@@ -75,6 +75,12 @@ ALL_BACKENDS: dict[str, str] = {
     "supermemory": "Semantic long-term graph memory",
 }
 
+# Backend categories for help text organization
+BACKEND_CATEGORIES = {
+    "local": ["mnemosyne", "holographic", "openviking", "byterover"],
+    "cloud": ["mem0", "honcho", "hindsight", "retaindb", "supermemory"],
+}
+
 _MASKED_SUFFIX_LEN = 4  # show last N chars of an existing secret in masked prompt
 
 
@@ -83,34 +89,113 @@ _MASKED_SUFFIX_LEN = 4  # show last N chars of an existing secret in masked prom
 
 def register_cli(subparser: argparse.ArgumentParser) -> None:
     """Build the ``hermes multi`` argparse subcommand tree."""
-    subs = subparser.add_subparsers(dest="multi_command")
+    subs = subparser.add_subparsers(dest="multi_command", help="Multi-memory backend management")
 
     # hermes multi status
-    sp = subs.add_parser("status", help="Show active backends and config")
+    sp = subs.add_parser(
+        "status",
+        help="Show active backends and configuration",
+        description="Display current multi-memory status including active backends, "
+        "configuration format, and installed plugins.",
+    )
     sp.add_argument(
-        "--json", dest="json_output", action="store_true", help="Machine-readable JSON output"
+        "--json",
+        dest="json_output",
+        action="store_true",
+        help="Output machine-readable JSON (for scripting)",
     )
 
     # hermes multi list
-    sp = subs.add_parser("list", help="List all known backends")
+    sp = subs.add_parser(
+        "list",
+        help="List all available memory backends",
+        description="Show all known memory backends with descriptions and active status.",
+    )
     sp.add_argument(
-        "--json", dest="json_output", action="store_true", help="Machine-readable JSON output"
+        "--json",
+        dest="json_output",
+        action="store_true",
+        help="Output machine-readable JSON (for scripting)",
+    )
+    sp.add_argument(
+        "--all",
+        dest="show_all",
+        action="store_true",
+        help="Show all backends including disabled ones",
     )
 
     # hermes multi add <backend>
-    sp = subs.add_parser("add", help="Add a memory backend to the active config")
-    sp.add_argument("backend", help="Backend name (e.g. mnemosyne, holographic, mem0)")
+    sp = subs.add_parser(
+        "add",
+        help="Add a memory backend to the active config",
+        description="Add a backend to multi-memory. The backend will be activated on next restart.",
+    )
+    sp.add_argument(
+        "backend",
+        help=f"Backend name. Available: {', '.join(ALL_BACKENDS.keys())}",
+    )
+    sp.add_argument(
+        "--config-only",
+        action="store_true",
+        help="Only update config, skip dependency installation",
+    )
 
     # hermes multi remove <backend>
-    sp = subs.add_parser("remove", help="Remove a memory backend from the active config")
+    sp = subs.add_parser(
+        "remove",
+        help="Remove a memory backend from the active config",
+        description=(
+            "Remove a backend from multi-memory. The backend will be deactivated on next restart."
+        ),
+    )
     sp.add_argument("backend", help="Backend name to remove")
+    sp.add_argument(
+        "--force",
+        action="store_true",
+        help="Remove without confirmation",
+    )
 
     # hermes multi setup [backend]
-    sp = subs.add_parser("setup", help="Interactive setup wizard for memory backends")
-    sp.add_argument("backend", nargs="?", help="Backend name to configure directly")
+    sp = subs.add_parser(
+        "setup",
+        help="Interactive setup wizard for memory backends",
+        description="Interactive wizard to configure memory backends, install dependencies, "
+        "and set up API keys.",
+    )
+    sp.add_argument(
+        "backend",
+        nargs="?",
+        help="Backend name to configure directly (skip wizard)",
+    )
+    sp.add_argument(
+        "--non-interactive",
+        action="store_true",
+        help="Non-interactive mode (for automation)",
+    )
 
     # hermes multi update
-    subs.add_parser("update", help="Update the multi-memory plugin")
+    sp = subs.add_parser(
+        "update",
+        help="Update the multi-memory plugin",
+        description="Download and install the latest version of the multi-memory plugin.",
+    )
+    sp.add_argument(
+        "--check",
+        action="store_true",
+        help="Check for updates without installing",
+    )
+
+    # hermes multi validate
+    sp = subs.add_parser(
+        "validate",
+        help="Validate multi-memory configuration",
+        description="Check configuration for errors and validate backend connectivity.",
+    )
+    sp.add_argument(
+        "--fix",
+        action="store_true",
+        help="Attempt to automatically fix common issues",
+    )
 
 
 # ── Command router ─────────────────────────────────────────────────────────
@@ -130,6 +215,8 @@ def multi_command(args: argparse.Namespace) -> None:
         _cmd_remove(args)
     elif sub == "update":
         _cmd_update(args)
+    elif sub == "validate":
+        _cmd_validate(args)
     elif sub == "setup":
         backend = getattr(args, "backend", None)
         if backend:
@@ -137,7 +224,7 @@ def multi_command(args: argparse.Namespace) -> None:
         else:
             _cmd_setup_wizard(args)
     else:
-        print("\n  Usage: hermes multi {status|list|add|remove|update|setup}\n")
+        print("\n  Usage: hermes multi {status|list|add|remove|update|validate|setup}\n")
         print("  Manage multi-memory backends.\n")
         print("  Commands:")
         print("    status          Show active backends and config")
@@ -145,6 +232,7 @@ def multi_command(args: argparse.Namespace) -> None:
         print("    add <name>      Add a backend to config")
         print("    remove <name>   Remove a backend from config")
         print("    update          Update the multi-memory plugin")
+        print("    validate        Validate configuration and backend connectivity")
         print("    setup [name]    Interactive setup wizard\n")
 
 
@@ -826,6 +914,101 @@ def _cmd_update(args: argparse.Namespace) -> None:
 
 
 # ── Status ─────────────────────────────────────────────────────────────────
+
+
+# ── Validate ──────────────────────────────────────────────────────────────
+
+
+def create_adapter(backend_name: str) -> Any:
+    """Create an adapter instance for the given backend name.
+
+    Returns None if the backend is not found or cannot be instantiated.
+    """
+    if backend_name not in ALL_BACKENDS:
+        return None
+
+    # Map backend names to their adapter classes
+    adapter_map = {
+        "mnemosyne": "_MnemosyneAdapter",
+        "mem0": "_Mem0Adapter",
+        "holographic": "_HolographicAdapter",
+        "honcho": "_HonchoAdapter",
+        "hindsight": "_HindsightAdapter",
+        "openviking": "_OpenVikingAdapter",
+        "retaindb": "_RetainDBAdapter",
+        "byterover": "_ByteRoverAdapter",
+        "supermemory": "_SupermemoryAdapter",
+    }
+
+    adapter_class_name = adapter_map.get(backend_name)
+    if not adapter_class_name:
+        # Unknown backend - cannot create without provider
+        return None
+
+    try:
+        # Import the appropriate adapter class (all use underscore prefix)
+        adapter_module = __import__("multi_memory.adapters", fromlist=[adapter_class_name])
+        adapter_class = getattr(adapter_module, adapter_class_name)
+        return adapter_class()
+    except Exception:
+        logger.exception(f"Failed to create adapter for {backend_name}")
+        return None
+
+
+def _cmd_validate(args: argparse.Namespace) -> None:
+    """Validate multi-memory configuration and backend connectivity."""
+    config = load_config()
+    memory_cfg = config.get("memory", {})
+    if not isinstance(memory_cfg, dict):
+        print("\n  ✗ Configuration error: memory section is not a dict\n")
+        return
+
+    active = get_enabled_backends(memory_cfg)
+    if not active:
+        print("\n  ✓ Configuration valid (no active backends)\n")
+        return
+
+    print(f"\n  Validating {len(active)} active backend(s): {', '.join(active)}\n")
+
+    issues = []
+    for backend_name in active:
+        try:
+            # Try to instantiate the adapter
+            adapter = create_adapter(backend_name)
+            if adapter is None:
+                issues.append(f"{backend_name}: adapter creation failed")
+                continue
+
+            # Check if backend is available
+            if not adapter.is_available():
+                issues.append(
+                    f"{backend_name}: backend not available (missing dependencies or config)"
+                )
+                continue
+
+            print(f"  ✓ {backend_name}: OK")
+
+        except Exception as e:
+            issues.append(f"{backend_name}: {e}")
+
+    print()
+    if issues:
+        print(f"  ✗ Found {len(issues)} issue(s):\n")
+        for issue in issues:
+            print(f"    • {issue}")
+        print("\n  Run 'hermes multi setup <backend>' to fix configuration issues.\n")
+    else:
+        print("  ✓ All backends validated successfully\n")
+
+    # Auto-fix mode
+    if getattr(args, "fix", False) and issues:
+        print("  Attempting auto-fix...\n")
+        for backend_name in active:
+            if any(backend_name in issue for issue in issues):
+                print(f"  • Trying to fix {backend_name}...")
+                # Could add auto-fix logic here
+                print(f"    (auto-fix not yet implemented for {backend_name})")
+        print()
 
 
 def _cmd_status(args: argparse.Namespace) -> None:  # noqa: PLR0912, PLR0915

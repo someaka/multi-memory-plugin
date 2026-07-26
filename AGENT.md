@@ -212,7 +212,7 @@ sub.method = lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("fail"))
 | `src/multi_memory/_version.py` | `__version__` — single source of truth |
 | `src/multi_memory/adapters.py` | `_SubProviderAdapter` base + `_renorm_schemas()` + `_normalize_tool_schema()` + cached introspection + 9 hardcoded adapters + `_GenericAdapter` |
 | `src/multi_memory/budget.py` | `ToolBudgetWarning` — warns when schema count exceeds threshold |
-| `src/multi_memory/cli.py` | `register_cli()` + `hermes multi {setup,status,list,add,remove}` + interactive curses wizard + dependency installer + env var manager + `ALL_BACKENDS` |
+| `src/multi_memory/cli.py` | `register_cli()` + `hermes multi {setup,status,list,add,remove,update,validate}` + `create_adapter()` + `BACKEND_CATEGORIES` + interactive curses wizard + dependency installer + env var manager + `ALL_BACKENDS` |
 | `src/multi_memory/config.py` | `_is_disabled()`, `_normalize_multi_config()`, `load_full_config()`, `load_multi_config()`, `get_enabled_backends()`, `MNEMOSYNE_PLUGIN_DIRS` |
 | `src/multi_memory/discovery.py` | `discover_backends()`, `installed_backends()` |
 
@@ -230,6 +230,8 @@ sub.method = lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("fail"))
 | `tests/test_adapter_robustness.py` | Adapter close/config_schema lifecycle, schema cache thread safety, re-entrancy guard, prefix routing, `_renorm_schemas` missing name |
 | `tests/test_cli_robustness.py` | CLI dispatch, `_cmd_add/remove/status/update` edge cases, `get_enabled_backends` guards, `_set_active_backends` coercion, `get_status_config` guards, `_install_dependencies` guards |
 | `tests/test_generic_adapter.py` | `_GenericAdapter` + `_try_generic_backend()` tests |
+| `tests/test_cli_validate.py` | `create_adapter()` + `_cmd_validate` tests |
+| `tests/test_cli_fifth_pass.py` | `--check`, `--force`, `--all`, `--config-only` flag tests, categorized list, dispatch routing |
 
 | `.github/workflows/ci.yml` | CI — Python 3.10/3.11/3.12/3.13/3.14, `astral-sh/ruff-action`, actions v6, pytest + 95% coverage, mypy, hermes-agent pinned to `v2026.7.7.2` |
 

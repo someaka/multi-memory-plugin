@@ -1,17 +1,17 @@
 # Multi-Memory Plugin — Audit Handoff
 
 **Date:** 2026-07-26
-**Version:** 0.13.0 (commit `7de6482`)
+**Version:** 0.13.0 (commit `36f95c7`)
 **Branch:** main (pushed to origin)
 
 ## Current State
 
 ```
-557 tests | 97.45% coverage | ruff clean | mypy clean | CI gate 95%
-8 source modules | 2936 lines | acyclic import graph
+557 tests | 97.88% coverage | ruff clean | mypy clean | CI gate 95%
+8 source modules | 1084 statements | acyclic import graph
 ```
 
-## What Was Done (Passes 1–11)
+## What Was Done (Passes 1–12)
 
 ### Architecture
 - `config.py` is the canonical foundation (zero internal imports)
@@ -46,60 +46,57 @@
 - CHANGELOG duplicate `0.12.0` headers merged
 - Version aligned to `0.13.0` across `_version.py`, `pyproject.toml`, `plugin.yaml`
 
+### Pass 12 (this session)
+- Removed unreachable `isinstance` in `_normalize_tool_schema` (adapters.py) — after `isinstance(schema.get("function"), dict)` passes, the inner re-check was dead; replaced with typed `unwrapped: dict` local to satisfy mypy `no-any-return`
+- Removed dead `--fix` argparse flag and stub auto-fix block from `_cmd_validate` — help text promised "Attempt to automatically fix common issues" but implementation printed "not yet implemented"
+- Removed dead `config`/`memory_cfg` assignments in `_cmd_setup_backend` — loaded config that was never read (`_do_backend_setup` loads its own)
+- Removed dead `config is None` guards in `_cmd_status` and `_cmd_list` — `load_config()` returns `{}` on failure, never `None`
+- Removed empty `# ── Status ──` section header in cli.py (no code beneath it)
+- Replaced `__import__()` with `find_spec()` in `_install_dependencies` — `__import__` executes module code as a side effect; `find_spec` is a pure probe
+- Added `isinstance(dep, str)` guard for non-string pip deps from malformed YAML
+- Removed stale `test_validate_with_fix_flag` test and dead `args.fix = False` assignments
+- Added `test_validate_adapter_raises_exception` — covers the exception handler path in `_cmd_validate`
+- Coverage: 97.45% → 97.88% (23 uncovered lines, down from 28)
+
 ## What Remains (Next Session)
 
-### Remaining `noqa` Suppressions in `cli.py`
+### Remaining `noqa` Suppressions in Source
 
-Three functions still carry `# noqa: PLR0912, PLR0915` (too many branches/statements):
+All noqa directives are legitimate — they suppress rules that ARE enabled in `pyproject.toml`:
 
-| Function | Lines | Why |
-|----------|-------|-----|
-| `_do_backend_setup` | 149 | Interactive per-backend config wizard — iterates schema fields, handles secrets/choices/defaults/env vars |
-| `_cmd_setup_wizard` | 101 | Interactive curses picker — builds item list, handles remove/add/built-in-only paths |
-| `_install_dependencies` | 97 | Dependency installer — uv/pip fallback, external dep checks, error reporting |
+| File | Rules | Why |
+|------|-------|-----|
+| `__init__.py` (stub ABC) | B027 ×9 | Empty methods in standalone `MemoryProvider` stub — intentional no-op defaults |
+| `__init__.py:188` | E402 | `from .validate import NamespaceValidator` after module-level code — must run after `_SUB_CLASSES` is built |
+| `__init__.py:328,452` | PERF203 ×2 | try/except in loops — intentional per-backend error isolation |
+| `cli.py:311` | PLR0911, PLR0912, PLR0915 | `_install_dependencies` — interactive/Hermes-dependent, `pragma: no cover` |
+| `cli.py:517` | PLR0912, PLR0915 | `_cmd_setup_wizard` — interactive curses picker, `pragma: no cover` |
+| `cli.py:641` | PLR0912, PLR0915 | `_do_backend_setup` — interactive config wizard, `pragma: no cover` |
 
-All three are `# pragma: no cover` (interactive/Hermes-dependent). Refactoring them is high-risk (breaking interactive flows) but would eliminate the last lint suppressions.
+**Do NOT run `ruff check --select RUF100`** — the `--select` flag overrides the project's `select` list, making ruff report all suppressions as stale. Use `ruff check src/` (no flags) to verify.
 
-**Approach for `_do_backend_setup`:** Extract field-type handlers into a dispatch dict:
-```python
-_FIELD_HANDLERS = {
-    "choices": _handle_choice_field,
-    "secret": _handle_secret_field,
-    "default": _handle_default_field,
-}
-```
-
-**Approach for `_cmd_setup_wizard`:** Extract the remove-backend sub-flow and the picker-building logic into helpers.
-
-**Approach for `_install_dependencies`:** Extract uv/pip command building and external dep checking into helpers.
-
-### Remaining Uncovered Lines (28 total, 97.45%)
+### Remaining Uncovered Lines (23 total, 97.88%)
 
 ```
 src/multi_memory/__init__.py:193     — import-time PREFIX validation warning (only fires if an adapter has empty PREFIX)
-src/multi_memory/adapters.py:70      — _normalize_tool_schema: schema["function"] not a dict after unwrap
-src/multi_memory/adapters.py:382-383 — _MnemosyneAdapter: ImportError on plugins.memory (standalone mode)
-src/multi_memory/adapters.py:423-427 — _MnemosyneAdapter: schema normalization warning path
-src/multi_memory/cli.py:204-210      — multi_command dispatch: setup with/without backend arg
-src/multi_memory/cli.py:1001-1002    — _cmd_validate: adapter.is_available() == False path
-src/multi_memory/cli.py:1039-1051    — _print_legacy_provider_config: get_status_config path
-src/multi_memory/cli.py:1097         — _print_backend_status: not-available env var display
-src/multi_memory/cli.py:1147         — _cmd_status: legacy provider warning
-src/multi_memory/cli.py:1173,1176    — _cmd_list: show_all flag paths
+src/multi_memory/adapters.py:381-382 — _MnemosyneAdapter: ImportError on plugins.memory (standalone mode)
+src/multi_memory/adapters.py:422-426 — _MnemosyneAdapter: schema normalization warning path
+src/multi_memory/cli.py:200,202,204,206 — multi_command dispatch: setup with/without backend arg
+src/multi_memory/cli.py:1020-1032    — _print_legacy_provider_config: get_status_config path
+src/multi_memory/cli.py:1126         — _print_backend_status: not-available env var display
+src/multi_memory/cli.py:1153         — _cmd_status: legacy provider warning
 ```
 
-Most are interactive/Hermes-dependent paths. The testable ones:
-- `cli.py:1001-1002` — mock `create_adapter` to return an adapter with `is_available() == False`
-- `cli.py:1173,1176` — pass `show_all=True` to `_cmd_list` (already tested in `test_cli_fifth_pass.py` but the assertion path may differ)
+Most are interactive/Hermes-dependent paths (`pragma: no cover` functions) or require a real Hermes installation.
 
 ### Scan Methodology for Next Session
 
 1. **Dead code scan:** `grep -rn "def _" src/ | while read; do grep -c "function_name" src/ tests/; done` — find private functions with zero callers
-2. **Import graph:** Run the AST dependency analyzer (see pass 4) — verify no new cycles
+2. **Import graph:** Run the AST dependency analyzer — verify no new cycles
 3. **Hermes ABC drift:** `diff /tmp/hermes-agent-pinned/agent/memory_provider.py /tmp/hermes-agent-latest/agent/memory_provider.py` — check for new methods since last check (was identical as of 2026-07-26)
 4. **Error logging standard:** `grep -rn "as e\b" src/` — must be zero
 5. **f-string in logger:** `grep -rn 'logger\.\(info\|warning\|debug\|error\)(f"' src/` — must be zero (use `%s` formatting)
-6. **Stale noqa:** `ruff check --select RUF100 src/` — find suppressions for rules that no longer fire
+6. **Stale noqa:** `ruff check src/` (NO --select flag) — verify no RUF100 warnings
 7. **Test naming:** Verify test class names match the function they test (no stale references to deleted functions)
 8. **AGENT.md accuracy:** Cross-reference key files table against actual `ls src/multi_memory/ tests/`
 9. **CHANGELOG consistency:** Verify version numbers match `_version.py`
@@ -111,9 +108,9 @@ Most are interactive/Hermes-dependent paths. The testable ones:
 src/multi_memory/
 ├── __init__.py    (749 lines) — MultiMemoryProvider, register(), _fan_out, _batch_shutdown
 ├── _version.py    (3 lines)   — __version__ = "0.13.0"
-├── adapters.py    (493 lines) — _SubProviderAdapter, _normalize_tool_schema, 9 adapters, _GenericAdapter
+├── adapters.py    (491 lines) — _SubProviderAdapter, _normalize_tool_schema, 9 adapters, _GenericAdapter
 ├── budget.py      (71 lines)  — ToolBudgetWarning
-├── cli.py         (1318 lines)— register_cli, multi_command, all _cmd_* handlers, create_adapter
+├── cli.py         (1297 lines)— register_cli, multi_command, all _cmd_* handlers, create_adapter
 ├── config.py      (154 lines) — _is_disabled, _normalize_multi_config, get_enabled_backends, MNEMOSYNE_PLUGIN_DIRS
 ├── discovery.py   (83 lines)  — discover_backends, installed_backends
 └── validate.py    (65 lines)  — NamespaceValidator
@@ -124,10 +121,12 @@ src/multi_memory/
 ```
 _version.py  (leaf)
 config.py    (leaf)
+budget.py    (leaf)
+validate.py  (leaf)
   ↓
 adapters.py  → config
   ↓
-__init__.py  → config, adapters, budget, validate
+__init__.py  → _version, adapters, budget, config, validate
   ↓
 discovery.py → config
   ↓
@@ -177,8 +176,10 @@ for f in sorted(os.listdir(src)):
         tree = ast.parse(fh.read())
     imports = []
     for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.module and node.module.startswith('multi_memory'):
-            imports.append(node.module.split('.')[-1])
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            mod = getattr(node, 'module', None) or ''
+            if mod.startswith('multi_memory') or mod.startswith('.'):
+                imports.append(mod.split('.')[-1])
     print(f'{f}: {imports or \"(leaf)\"}')"
 
 # Hermes ABC check (requires /tmp/hermes-agent-latest)
@@ -195,3 +196,4 @@ diff /tmp/hermes-agent-pinned/agent/memory_provider.py /tmp/hermes-agent-latest/
 6. **Schema validation before registration** — Broken backends are skipped, never registered.
 7. **Config precedence** — `multi.backends` dict > `providers` list > `provider` string.
 8. **`config.py` and `_version.py` are leaves** — No internal imports allowed.
+9. **No `--select` flag with ruff** — It overrides the project's `select` list and produces false RUF100 positives.

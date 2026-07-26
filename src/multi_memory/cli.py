@@ -167,11 +167,6 @@ def register_cli(subparser: argparse.ArgumentParser) -> None:
         nargs="?",
         help="Backend name to configure directly (skip wizard)",
     )
-    sp.add_argument(
-        "--non-interactive",
-        action="store_true",
-        help="Non-interactive mode (for automation)",
-    )
 
     # hermes multi update
     sp = subs.add_parser(
@@ -1003,8 +998,8 @@ def _cmd_validate(args: argparse.Namespace) -> None:
 
             print(f"  ✓ {backend_name}: OK")
 
-        except Exception as e:
-            issues.append(f"{backend_name}: {e}")
+        except Exception as exc:
+            issues.append(f"{backend_name}: {exc}")
 
     print()
     if issues:
@@ -1203,19 +1198,6 @@ def _cmd_list(args: argparse.Namespace) -> None:
         print(f"    {label}:")
         for name in members:
             desc = ALL_BACKENDS.get(name, "")
-            is_active = name in active_set
-            status = "[active]" if is_active else ""
-            marker = "→" if is_active else " "
-            print(f"    {marker} {name:15s} {status:12s} {desc}")
-        print()
-
-    # Show any backends not in a category
-    categorized = {n for m in BACKEND_CATEGORIES.values() for n in m}
-    uncategorized = [n for n in ALL_BACKENDS if n not in categorized]
-    if uncategorized:
-        print("    Other:")
-        for name in uncategorized:
-            desc = ALL_BACKENDS[name]
             is_active = name in active_set
             status = "[active]" if is_active else ""
             marker = "→" if is_active else " "

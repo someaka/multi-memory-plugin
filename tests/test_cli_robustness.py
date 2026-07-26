@@ -867,7 +867,7 @@ class TestCmdStatusDisplayBranches:
         captured = capsys.readouterr()
         output = json.loads(captured.out)
         assert "version" in output
-        assert output["version"] == "0.12.0"
+        assert output["version"] == "0.13.0"
 
     def test_status_legacy_provider_not_installed(self, capsys):
         """Legacy provider not installed shows appropriate message."""
@@ -924,15 +924,15 @@ class TestCmdRemoveEdgeCases:
     """_cmd_remove edge cases (from fifth pass)."""
 
     def test_remove_with_remaining(self, capsys):
-        """Removing one backend with others remaining shows remaining."""
+        """Removing one backend shows remaining active backends."""
         config = {
             "memory": {
-                "provider": "multi",
                 "multi": {"backends": {"mem0": {}, "holographic": {}}},
                 "providers": ["mem0", "holographic"],
+                "provider": "multi",
             }
         }
-        args = argparse.Namespace(backend="mem0")
+        args = argparse.Namespace(backend="mem0", force=True)
         with (
             mock.patch("multi_memory.cli.load_config", return_value=config),
             mock.patch("multi_memory.cli.save_config"),

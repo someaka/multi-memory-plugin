@@ -302,7 +302,7 @@ class TestCmdRemove:
         """remove deletes backend from config."""
         config = {"memory": {"multi": {"backends": {"mem0": {}}}, "providers": ["mem0"]}}
         saved = {}
-        args = argparse.Namespace(backend="mem0")
+        args = argparse.Namespace(backend="mem0", force=True)
         with (
             mock.patch("multi_memory.cli.load_config", return_value=config),
             mock.patch("multi_memory.cli.save_config", side_effect=saved.update),
@@ -336,8 +336,8 @@ class TestCmdRemove:
                 "provider": "multi",
             }
         }
+        args = argparse.Namespace(backend="mem0", force=True)
         saved = {}
-        args = argparse.Namespace(backend="mem0")
         call_count = [0]
 
         def capture_save(cfg):

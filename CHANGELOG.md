@@ -7,43 +7,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.13.0] — 2026-07-26
 
-### Added — Architecture & UX Improvements (Fourth Pass)
+### Added — Architecture & UX Improvements (Fourth + Fifth Pass)
 
 - **New `hermes multi validate` command** — validates configuration and checks
   backend connectivity before startup. Reports which backends are active,
   available, or have issues. Supports `--fix` flag for auto-repair (placeholder).
-- **`create_adapter()` helper** — clean adapter factory using a mapping dictionary
-  instead of chained if/elif statements. Reduces complexity and improves maintainability.
+- **`create_adapter()` helper** — reuses the canonical `_SUB_CLASSES_BY_KEY`
+  lookup from `__init__.py` instead of maintaining a second adapter registry.
 - **`BACKEND_CATEGORIES` constant** — organizes backends by deployment type
-  (`local` vs `cloud`) for better help text and future filtering.
+  (`local` vs `cloud`). Used by `hermes multi list` for categorized display
+  and included in `--json` output.
 - **Enhanced CLI help text** — all commands now have detailed descriptions
   explaining what they do, not just one-line summaries.
-- **New CLI flags for better automation**:
+- **New CLI flags wired to behavior**:
   - `hermes multi add --config-only` — skip dependency installation
-  - `hermes multi remove --force` — skip confirmation prompts
-  - `hermes multi setup --non-interactive` — for scripted deployments
-  - `hermes multi list --all` — show disabled backends
+  - `hermes multi remove --force` — skip confirmation prompt
+  - `hermes multi list --all` — show all backends including disabled
   - `hermes multi update --check` — preview available updates without installing
 
 ### Changed — Code Quality
 
-- **Adapter creation refactored** — replaced 9-branch if/elif chain with
-  dictionary lookup + dynamic import. Reduces cyclomatic complexity from 12 to 3.
-- **Test coverage improved** — added 13 new tests for `validate` command and
-  `create_adapter()` helper. Total: 541 tests, 97% coverage.
-- **Line length compliance** — all lines now under 100 characters per PEP 8.
+- **`create_adapter()` deduplicated** — eliminated the second adapter registry
+  (9-entry dict + `__import__` hack) in favor of the existing
+  `_SUB_CLASSES_BY_KEY` from `__init__.py`. Single source of truth.
+- **`hermes multi list` now categorized** — backends grouped by Local/Cloud
+  using `BACKEND_CATEGORIES`, with category included in JSON output.
+- **`hermes multi remove` now confirms** — interactive confirmation prompt
+  before removing a backend (bypass with `--force`).
+- **`hermes multi add` installs dependencies** — calls `_install_dependencies()`
+  after saving config (skip with `--config-only`).
+- **`hermes multi update --check`** — queries `hermes plugins info multi` and
+  shows current version without modifying anything.
+- **Version bumped to 0.13.0** in `_version.py`, `pyproject.toml`, `plugin.yaml`.
 
-### Technical Details
+### Fixed — Fifth Pass Defects
 
-- `validate` command uses `create_adapter()` to instantiate each configured backend
-  and calls `is_available()` to check readiness
-- Error messages include actionable guidance (e.g., "run hermes multi setup")
-- Auto-fix mode is currently a placeholder — logs intent but doesn't modify config
-- `BACKEND_CATEGORIES` exported for use by future UI components (dashboard, wizard)
+- **Dead CLI flags removed** — `--config-only`, `--force`, `--all`, `--check`
+  were registered in argparse but never consumed by command handlers. All now
+  wired to actual behavior.
+- **`BACKEND_CATEGORIES` dead constant eliminated** — now used by `_cmd_list`
+  for categorized display and JSON output.
+- **Duplicate adapter registry eliminated** — `create_adapter()` in `cli.py`
+  maintained its own 9-entry mapping dict + `__import__` hack, duplicating
+  `_SUB_CLASSES_BY_KEY`. Now delegates to the canonical lookup.
+- **CHANGELOG duplicate `0.12.0` headers merged** — second and third pass
+  both wrote separate `## [0.12.0]` blocks. Merged into one.
+- **Version mismatch fixed** — `_version.py` said `0.12.0` while CHANGELOG
+  said `0.13.0`. Now consistent at `0.13.0`.
 
 ## [0.12.0] — 2026-07-26
 
-### Changed — Architectural Consolidation
+### Changed — Architectural Consolidation (Second Pass)
 
 - **Config module becomes canonical foundation** — moved `_normalize_multi_config()`
   from `__init__.py` to `config.py` where it belongs alongside other config parsing.
@@ -58,6 +72,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `__init__.py` ↔ `cli.py`. Both modules now import `__version__` from the single
   source. Deferred `from multi_memory import __version__` calls in CLI removed.
 
+### Changed — Custom Backend Compatibility (Third Pass)
+
+- **`_normalize_tool_schema()` added** — mirrors upstream
+  `agent.memory_manager.normalize_tool_schema`. Custom backends returning
+  double-wrapped OpenAI tool schemas (`{"type": "function", "function": {...}}`)
+  are now unwrapped transparently across all three schema paths:
+  `_renorm_schemas()` (hardcoded adapters), `_GenericAdapter.get_tool_schemas()`,
+  and `_MnemosyneAdapter.get_tool_schemas()`.
+- **`_renorm_schemas()` now skips nameless schemas** — previously produced
+  `{"name": "prefix_"}` for schemas with no `name` key (useless tool). Now
+  logs a warning and skips, matching upstream MemoryManager behavior.
+- **`_SubProviderAdapter.sync_turn` forwards `**kwargs`** — was silently dropping
+  extra keyword arguments before passing to `_fan_out()`. Future ABC additions
+  are now forwarded without adapter changes.
+- **`_SubProviderAdapter.prefetch` / `queue_prefetch` accept `**kwargs`** — same
+  forward-compatibility fix applied to both prefetch methods.
+
 ### Changed — Streamlining
 
 - **`concurrent.futures` moved to module-level import** — no longer deferred inside
@@ -70,7 +101,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   was "re-exported" but it was never in `__all__`. Comment now accurately describes
   private-but-accessible semantics.
 - **Orphaned `setup.cfg` deleted** — superseded by `pyproject.toml`, served no purpose.
-- **Stale `__pycache__` cleaned** from deleted test files.
 
 ### Fixed — Safety & Correctness
 
@@ -91,69 +121,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Metrics
 
-- **522 tests passing** (unchanged count, updated imports)
-- **97.19% coverage** (up from 97.12% — eliminated dead code paths)
-- **8 source modules**, clean import graph with no cycles
-- **ruff + mypy clean**, zero warnings
-
-## [0.12.0] — 2026-07-26
-
-### Changed — Architectural Consolidation (Second Pass)
-- **Config module becomes canonical foundation** — moved `_normalize_multi_config()`
-  from `__init__.py` to `config.py` where it belongs alongside other config parsing.
-  `config.py` now has zero internal imports (true foundation layer).
-- **Eliminated duplicate config parser** — deleted `_get_active_backends()` from
-  `cli.py` (18 lines), replaced all 10 call sites with `config.get_enabled_backends()`.
-  Both functions did identical work; only one survives.
-- **`MNEMOSYNE_PLUGIN_DIRS` centralized in `config.py`** — moved from `adapters.py`
-  to eliminate cross-module constant dependency. `adapters.py` and `discovery.py`
-  now import from `config.py`.
-- **Version extracted to `_version.py`** — breaks circular import risk between
-  `__init__.py` ↔ `cli.py`. Both modules now import `__version__` from the single
-  source. Deferred `from multi_memory import __version__` calls in CLI removed.
-
-### Changed — Custom Backend Compatibility (Third Pass)
-- **`_normalize_tool_schema()` added** — mirrors upstream
-  `agent.memory_manager.normalize_tool_schema`. Custom backends returning
-  double-wrapped OpenAI tool schemas (`{"type": "function", "function": {...}}`)
-  are now unwrapped transparently across all three schema paths:
-  `_renorm_schemas()` (hardcoded adapters), `_GenericAdapter.get_tool_schemas()`,
-  and `_MnemosyneAdapter.get_tool_schemas()`.
-- **`_renorm_schemas()` now skips nameless schemas** — previously produced
-  `{"name": "prefix_"}` for schemas with no `name` key (useless tool). Now
-  logs a warning and skips, matching upstream MemoryManager behavior.
-- **`_SubProviderAdapter.sync_turn` forwards `**kwargs`** — was silently dropping
-  extra keyword arguments before passing to `_fan_out()`. Future ABC additions
-  are now forwarded without adapter changes.
-- **`_SubProviderAdapter.prefetch` / `queue_prefetch` accept `**kwargs`** — same
-  forward-compatibility fix applied to both prefetch methods.
-
-### Changed — Streamlining
-- **`concurrent.futures` moved to module-level import** — no longer deferred inside
-  `_batch_shutdown()`. Stdlib module, zero cost to import eagerly.
-- **Redundant `from typing import cast` removed** (4 locations: `adapters.py` ×3,
-  `__init__.py` ×1) — already imported at module top.
-- **Dead `import sys` removed** (2 locations in `cli.py` standalone fallbacks) —
-  `sys` already at module level.
-- **Misleading comment fixed** — `__init__.py` claimed `_normalize_multi_config`
-  was "re-exported" but it was never in `__all__`. Comment now accurately describes
-  private-but-accessible semantics.
-- **Orphaned `setup.cfg` deleted** — superseded by `pyproject.toml`, served no purpose.
-
-### Fixed — Safety & Correctness
-- **`_cmd_status` and `_cmd_list` None guards** — added defensive checks for
-  `load_config()` returning `None`, preventing `AttributeError` on `.get()` calls.
-- **Test `test_none_input` corrected** — `get_enabled_backends(None)` semantically
-  means "load from file" (returns active backends from `~/.hermes/config.yaml`),
-  not "return empty". Test renamed to `test_empty_dict_input` with correct semantics.
-
-### Removed
-- **`_get_active_backends()` deleted from `cli.py`** — duplicate of
-  `config.get_enabled_backends()`. 10 call sites migrated.
-- **Deferred `__version__` imports removed from CLI** — no longer needed with
-  `_version.py` extraction.
-
-### Metrics
 - **528 tests passing** (+6 new tests for schema normalization and kwargs forwarding)
 - **97%+ coverage**, ruff + mypy clean
 - **8 source modules**, acyclic import graph with `config.py` and `_version.py` as leaves

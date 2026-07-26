@@ -197,7 +197,7 @@ class TestRemoveCommandNonDictGuards:
 
         from multi_memory.cli import _cmd_remove
 
-        args = argparse.Namespace(backend="test_backend")
+        args = argparse.Namespace(backend="test_backend", force=True)
 
         # Config with non-dict multi value
         config = {
@@ -224,7 +224,7 @@ class TestRemoveCommandNonDictGuards:
 
         from multi_memory.cli import _cmd_remove
 
-        args = argparse.Namespace(backend="test_backend")
+        args = argparse.Namespace(backend="test_backend", force=True)
 
         config = {
             "memory": {
@@ -249,7 +249,7 @@ class TestRemoveCommandNonDictGuards:
 
         from multi_memory.cli import _cmd_remove
 
-        args = argparse.Namespace(backend="test_backend")
+        args = argparse.Namespace(backend="test_backend", force=True)
 
         config = {
             "memory": {

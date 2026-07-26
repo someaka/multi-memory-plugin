@@ -870,8 +870,39 @@ def _remove_backend_from_config(name: str, memory_cfg: dict) -> None:
 # ── Update ─────────────────────────────────────────────────────────────────
 
 
+def _cmd_update_check() -> None:
+    """Check for available updates without installing."""
+    print("\n  Checking for multi-memory plugin updates...")
+    print("  " + "─" * 40)
+    print(f"  Current version: {__version__}")
+    try:
+        result = subprocess.run(
+            ["hermes", "plugins", "info", "multi"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        if result.returncode == 0 and result.stdout:
+            for line in result.stdout.strip().split("\n")[:5]:
+                print(f"  {line}")
+        else:
+            print("  Could not fetch remote plugin info.")
+    except FileNotFoundError:
+        print("  ✗ 'hermes' command not found")
+    except subprocess.TimeoutExpired:
+        print("  ✗ Check timed out after 30 seconds")
+    except Exception as exc:
+        print(f"  ✗ Check failed: {exc}")
+    print()
+
+
 def _cmd_update(args: argparse.Namespace) -> None:
     """Update the multi-memory plugin via hermes plugins update."""
+    if getattr(args, "check", False):
+        _cmd_update_check()
+        return
+
     print("\n  Updating multi-memory plugin...")
     print("  " + "─" * 40)
 
@@ -922,36 +953,20 @@ def _cmd_update(args: argparse.Namespace) -> None:
 def create_adapter(backend_name: str) -> Any:
     """Create an adapter instance for the given backend name.
 
+    Reuses the canonical ``_SUB_CLASSES_BY_KEY`` lookup from ``__init__.py``
+    instead of maintaining a second adapter registry.
+
     Returns None if the backend is not found or cannot be instantiated.
     """
-    if backend_name not in ALL_BACKENDS:
+    from multi_memory import _SUB_CLASSES_BY_KEY
+
+    cls = _SUB_CLASSES_BY_KEY.get(backend_name)
+    if cls is None:
         return None
-
-    # Map backend names to their adapter classes
-    adapter_map = {
-        "mnemosyne": "_MnemosyneAdapter",
-        "mem0": "_Mem0Adapter",
-        "holographic": "_HolographicAdapter",
-        "honcho": "_HonchoAdapter",
-        "hindsight": "_HindsightAdapter",
-        "openviking": "_OpenVikingAdapter",
-        "retaindb": "_RetainDBAdapter",
-        "byterover": "_ByteRoverAdapter",
-        "supermemory": "_SupermemoryAdapter",
-    }
-
-    adapter_class_name = adapter_map.get(backend_name)
-    if not adapter_class_name:
-        # Unknown backend - cannot create without provider
-        return None
-
     try:
-        # Import the appropriate adapter class (all use underscore prefix)
-        adapter_module = __import__("multi_memory.adapters", fromlist=[adapter_class_name])
-        adapter_class = getattr(adapter_module, adapter_class_name)
-        return adapter_class()
+        return cls()
     except Exception:
-        logger.exception(f"Failed to create adapter for {backend_name}")
+        logger.exception("Failed to create adapter for %s", backend_name)
         return None
 
 
@@ -1152,6 +1167,7 @@ def _cmd_status(args: argparse.Namespace) -> None:  # noqa: PLR0912, PLR0915
 def _cmd_list(args: argparse.Namespace) -> None:
     """List all known backends — installed and available."""
     json_out = getattr(args, "json_output", False)
+    show_all = getattr(args, "show_all", False)
 
     config = load_config()
     if config is None:
@@ -1164,10 +1180,16 @@ def _cmd_list(args: argparse.Namespace) -> None:
     if json_out:
         rows = []
         for name, desc in ALL_BACKENDS.items():
+            category = "unknown"
+            for cat, members in BACKEND_CATEGORIES.items():
+                if name in members:
+                    category = cat
+                    break
             rows.append(
                 {
                     "name": name,
                     "description": desc,
+                    "category": category,
                     "active": name in active_set,
                 }
             )
@@ -1175,16 +1197,36 @@ def _cmd_list(args: argparse.Namespace) -> None:
         return
 
     print("\n  Available memory backends:\n")
-    print(f"    {'Name':15s} {'Status':12s} {'Description'}")
-    print(f"    {'─' * 15} {'─' * 12} {'─' * 40}")
 
-    for name, desc in ALL_BACKENDS.items():
-        is_active = name in active_set
-        status = "[active]" if is_active else ""
-        marker = "→" if is_active else " "
-        print(f"  {marker} {name:15s} {status:12s} {desc}")
+    for category, members in BACKEND_CATEGORIES.items():
+        label = category.capitalize()
+        print(f"    {label}:")
+        for name in members:
+            desc = ALL_BACKENDS.get(name, "")
+            is_active = name in active_set
+            status = "[active]" if is_active else ""
+            marker = "→" if is_active else " "
+            print(f"    {marker} {name:15s} {status:12s} {desc}")
+        print()
 
-    print("\n  Use 'hermes multi add <name>' or 'hermes multi setup'.\n")
+    # Show any backends not in a category
+    categorized = {n for m in BACKEND_CATEGORIES.values() for n in m}
+    uncategorized = [n for n in ALL_BACKENDS if n not in categorized]
+    if uncategorized:
+        print("    Other:")
+        for name in uncategorized:
+            desc = ALL_BACKENDS[name]
+            is_active = name in active_set
+            status = "[active]" if is_active else ""
+            marker = "→" if is_active else " "
+            print(f"    {marker} {name:15s} {status:12s} {desc}")
+        print()
+
+    if not show_all:
+        print("  Use 'hermes multi add <name>' or 'hermes multi setup'.\n")
+    else:
+        print("  Use 'hermes multi add <name>' or 'hermes multi setup'.")
+        print("  (--all: showing all backends including disabled)\n")
 
 
 # ── Add / Remove ───────────────────────────────────────────────────────────
@@ -1231,6 +1273,12 @@ def _cmd_add(args: argparse.Namespace) -> None:
     memory_cfg["provider"] = "multi"
 
     save_config(config)
+
+    # Install dependencies unless --config-only
+    config_only = getattr(args, "config_only", False)
+    if not config_only:
+        _install_dependencies(backend)
+
     print(f"\n  ✓ Added '{backend}' to active backends.")
     print("  Restart Hermes to activate.\n")
 
@@ -1265,6 +1313,18 @@ def _cmd_remove(args: argparse.Namespace) -> None:
         if active:
             print(f"  Active backends: {', '.join(active)}\n")
         return
+
+    # Confirm unless --force
+    force = getattr(args, "force", False)
+    if not force:
+        try:
+            answer = input(f"  Remove '{backend}' from active backends? [y/N] ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print("\n  Cancelled.\n")
+            return
+        if answer not in ("y", "yes"):
+            print("  Cancelled.\n")
+            return
 
     _remove_backend_from_config(backend, memory_cfg)
     save_config(config)

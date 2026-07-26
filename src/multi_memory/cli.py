@@ -1021,7 +1021,76 @@ def _cmd_validate(args: argparse.Namespace) -> None:
         print()
 
 
-def _cmd_status(args: argparse.Namespace) -> None:  # noqa: PLR0912, PLR0915
+def _print_config_value(key: str, val: Any) -> None:
+    """Print a single config key/value pair with type-aware formatting."""
+    if isinstance(val, dict) and val:
+        items = ", ".join(f"{k}" if v in ({}, True) else f"{k}({v})" for k, v in val.items())
+        print(f"      {key}: {items}")
+    elif isinstance(val, list):
+        print(f"      {key}: {', '.join(str(v) for v in val)}")
+    else:
+        print(f"      {key}: {val}")
+
+
+def _print_legacy_provider_config(
+    top_provider: str, memory_cfg: dict, backends_cache: list
+) -> None:
+    """Show top-level provider config for legacy non-multi providers."""
+    top_config = memory_cfg.get(top_provider, {})
+    if not top_config or not isinstance(top_config, dict):
+        return
+    print(f"\n    ── {top_provider} ──")
+    provider_obj = next((p for n, _, p in backends_cache if n == top_provider), None)
+    if provider_obj and hasattr(provider_obj, "get_status_config"):
+        display_config = provider_obj.get_status_config(top_config)
+        if isinstance(display_config, dict):
+            for key, val in display_config.items():
+                print(f"      {key}: {val}")
+    else:
+        for key, val in top_config.items():
+            _print_config_value(key, val)
+
+
+def _print_backend_status(backend_name: str, memory_cfg: dict, backends_cache: list) -> None:
+    """Show status for a single active backend."""
+    print(f"\n    ── {backend_name} ──")
+    backend_cfg = memory_cfg.get(backend_name, {})
+    if isinstance(backend_cfg, dict) and backend_cfg:
+        print("    Config:")
+        for key, val in backend_cfg.items():
+            _print_config_value(key, val)
+
+    found = any(n == backend_name for n, _, _ in backends_cache)
+    if found:
+        print("    Plugin:       installed ✓")
+        for bname, _, bprov in backends_cache:
+            if bname == backend_name and bprov:
+                if bprov.is_available():
+                    print("    Status:       available ✓")
+                else:
+                    print("    Status:       not available ✗")
+                    schema = (
+                        bprov.get_config_schema() if hasattr(bprov, "get_config_schema") else []
+                    )
+                    required = [f for f in schema if f.get("env_var")]
+                    if required:
+                        print("    Missing env vars:")
+                        for f in required:
+                            ev = f.get("env_var", "")
+                            url = f.get("url", "")
+                            is_set = bool(os.environ.get(ev))
+                            mark = "✓" if is_set else "✗"
+                            line = f"      {mark} {ev}"
+                            if url and not is_set:
+                                line += f"  → {url}"
+                            print(line)
+                break
+    else:
+        print("    Plugin:       NOT installed ✗")
+        print(f"    Install the '{backend_name}' plugin to ~/.hermes/plugins/")
+
+
+def _cmd_status(args: argparse.Namespace) -> None:
     """Show active backends and their config."""
     config = load_config()
     if config is None:
@@ -1075,76 +1144,11 @@ def _cmd_status(args: argparse.Namespace) -> None:  # noqa: PLR0912, PLR0915
 
     # Show top-level provider config for legacy non-multi providers
     if top_provider and top_provider != "multi" and top_provider not in active:
-        top_config = memory_cfg.get(top_provider, {})
-        if top_config and isinstance(top_config, dict):
-            print(f"\n    ── {top_provider} ──")
-            # Check for get_status_config
-            provider_obj = next((p for n, _, p in _backends_cache if n == top_provider), None)
-            if provider_obj and hasattr(provider_obj, "get_status_config"):
-                display_config = provider_obj.get_status_config(top_config)
-                if isinstance(display_config, dict):
-                    for key, val in display_config.items():
-                        print(f"      {key}: {val}")
-            else:
-                for key, val in top_config.items():
-                    if isinstance(val, dict) and val:
-                        items = ", ".join(
-                            f"{k}" if v in ({}, True) else f"{k}({v})" for k, v in val.items()
-                        )
-                        print(f"      {key}: {items}")
-                    elif isinstance(val, list):
-                        print(f"      {key}: {', '.join(str(v) for v in val)}")
-                    else:
-                        print(f"      {key}: {val}")
+        _print_legacy_provider_config(top_provider, memory_cfg, _backends_cache)
 
     # Show each active backend
-    if active:
-        for backend_name in active:
-            print(f"\n    ── {backend_name} ──")
-            backend_cfg = memory_cfg.get(backend_name, {})
-            if isinstance(backend_cfg, dict) and backend_cfg:
-                print("    Config:")
-                for key, val in backend_cfg.items():
-                    if isinstance(val, dict) and val:
-                        items = ", ".join(
-                            f"{k}" if v in ({}, True) else f"{k}({v})" for k, v in val.items()
-                        )
-                        print(f"      {key}: {items}")
-                    elif isinstance(val, list):
-                        print(f"      {key}: {', '.join(str(v) for v in val)}")
-                    else:
-                        print(f"      {key}: {val}")
-
-            found = any(n == backend_name for n, _, _ in _backends_cache)
-            if found:
-                print("    Plugin:       installed ✓")
-                for bname, _, bprov in _backends_cache:
-                    if bname == backend_name and bprov:
-                        if bprov.is_available():
-                            print("    Status:       available ✓")
-                        else:
-                            print("    Status:       not available ✗")
-                            schema = (
-                                bprov.get_config_schema()
-                                if hasattr(bprov, "get_config_schema")
-                                else []
-                            )
-                            required = [f for f in schema if f.get("env_var")]
-                            if required:
-                                print("    Missing env vars:")
-                                for f in required:
-                                    ev = f.get("env_var", "")
-                                    url = f.get("url", "")
-                                    is_set = bool(os.environ.get(ev))
-                                    mark = "✓" if is_set else "✗"
-                                    line = f"      {mark} {ev}"
-                                    if url and not is_set:
-                                        line += f"  → {url}"
-                                    print(line)
-                        break
-            else:
-                print("    Plugin:       NOT installed ✗")
-                print(f"    Install the '{backend_name}' plugin to ~/.hermes/plugins/")
+    for backend_name in active:
+        _print_backend_status(backend_name, memory_cfg, _backends_cache)
 
     # List installed plugins
     if _backends_cache:

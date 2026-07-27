@@ -133,6 +133,7 @@ class TestDiscoverBackends:
             mock.call("plugins.memory.supermemory"),
         ]
         mock_fs.assert_has_calls(expected_calls, any_order=False)
+        assert mock_fs.call_count == 8
 
     def test_individual_install_detection(self):
         """Each backend is independently checked."""

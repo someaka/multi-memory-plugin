@@ -7,148 +7,64 @@ from __future__ import annotations
 
 from unittest import mock
 
+import pytest
+
 from multi_memory import _normalize_multi_config
 from multi_memory.config import _is_disabled, get_enabled_backends
 
 
-class TestIsDisabledSemantics:
+class TestIsDisabled:
     """_is_disabled must handle all YAML boolean representations correctly."""
 
-    # Empty dict semantics (from second pass)
-    def test_empty_dict_is_enabled(self):
-        assert _is_disabled({}) is False
-
-    def test_non_empty_dict_is_enabled(self):
-        assert _is_disabled({"api_key": "x"}) is False
-
-    def test_true_is_enabled(self):
-        assert _is_disabled(True) is False
-
-    def test_false_is_disabled(self):
-        assert _is_disabled(False) is True
-
-    def test_none_is_disabled(self):
-        assert _is_disabled(None) is True
-
-    def test_zero_is_disabled(self):
-        assert _is_disabled(0) is True
-
-    def test_one_is_enabled(self):
-        assert _is_disabled(1) is False
-
-    def test_empty_string_is_disabled(self):
-        assert _is_disabled("") is True
-
-    def test_false_string_is_disabled(self):
-        assert _is_disabled("false") is True
-
-    def test_false_capital_string_is_disabled(self):
-        assert _is_disabled("False") is True
-
-    def test_no_string_is_disabled(self):
-        assert _is_disabled("no") is True
-
-    def test_zero_string_is_disabled(self):
-        assert _is_disabled("0") is True
-
-    def test_truthy_string_is_enabled(self):
-        assert _is_disabled("yes") is False
-
-    def test_whitespace_string_is_disabled(self):
-        assert _is_disabled("   ") is True
-
-
-class TestIsDisabledCaseInsensitive:
-    """_is_disabled must be case-insensitive for string values (from fourth pass)."""
-
-    def test_false_uppercase(self):
-        assert _is_disabled("FALSE") is True
-
-    def test_false_mixed_case(self):
-        assert _is_disabled("FaLsE") is True
-
-    def test_no_uppercase(self):
-        assert _is_disabled("NO") is True
-
-    def test_no_mixed_case(self):
-        assert _is_disabled("No") is True
-
-    def test_zero_uppercase(self):
-        assert _is_disabled("0") is True
-
-    def test_truthy_uppercase(self):
-        assert _is_disabled("YES") is False
-
-
-class TestIsDisabledOffDisabled:
-    """_is_disabled recognizes 'off' and 'disabled' strings (from seventh pass)."""
-
-    def test_off_disabled(self):
-        assert _is_disabled("off") is True
-
-    def test_uppercase_off_disabled(self):
-        assert _is_disabled("OFF") is True
-
-    def test_mixed_case_off_disabled(self):
-        assert _is_disabled("Off") is True
-
-    def test_disabled_string(self):
-        assert _is_disabled("disabled") is True
-
-    def test_uppercase_disabled(self):
-        assert _is_disabled("DISABLED") is True
-
-    def test_mixed_case_disabled(self):
-        assert _is_disabled("Disabled") is True
-
-    def test_off_with_whitespace(self):
-        assert _is_disabled("  off  ") is True
-
-    def test_disabled_with_whitespace(self):
-        assert _is_disabled("  disabled  ") is True
-
-    def test_on_still_enabled(self):
-        assert _is_disabled("on") is False
-
-    def test_enabled_still_enabled(self):
-        assert _is_disabled("enabled") is False
-
-
-class TestIsDisabledFloat:
-    """_is_disabled handles float zero correctly (from ninth pass)."""
-
-    def test_float_zero_disabled(self):
-        assert _is_disabled(0.0) is True
-
-    def test_float_zero_zero_disabled(self):
-        assert _is_disabled(0.0) is True
-
-    def test_negative_float_zero_disabled(self):
-        assert _is_disabled(-0.0) is True
-
-    def test_float_one_enabled(self):
-        assert _is_disabled(1.0) is False
-
-    def test_float_half_enabled(self):
-        assert _is_disabled(0.5) is False
-
-    def test_float_pi_enabled(self):
-        assert _is_disabled(3.14) is False
-
-    def test_int_zero_still_disabled(self):
-        """Regression: int 0 still disabled after changing to int | float."""
-        assert _is_disabled(0) is True
-
-    def test_int_one_still_enabled(self):
-        assert _is_disabled(1) is False
-
-    def test_bool_true_still_enabled(self):
-        """Regression: bool True still enabled (bool checked before int|float)."""
-        assert _is_disabled(True) is False
-
-    def test_bool_false_still_disabled(self):
-        """Regression: bool False still disabled."""
-        assert _is_disabled(False) is True
+    @pytest.mark.parametrize(
+        "value,expected",
+        [
+            # Boolean semantics
+            (True, False),
+            (False, True),
+            # None semantics
+            (None, True),
+            # Integer semantics
+            (0, True),
+            (1, False),
+            # Float semantics
+            (0.0, True),
+            (-0.0, True),
+            (1.0, False),
+            (0.5, False),
+            (3.14, False),
+            # String semantics - disabled values
+            ("", True),
+            ("false", True),
+            ("False", True),
+            ("FALSE", True),
+            ("FaLsE", True),
+            ("no", True),
+            ("No", True),
+            ("NO", True),
+            ("0", True),
+            ("off", True),
+            ("Off", True),
+            ("OFF", True),
+            ("disabled", True),
+            ("Disabled", True),
+            ("DISABLED", True),
+            ("   ", True),
+            ("  off  ", True),
+            ("  disabled  ", True),
+            # String semantics - enabled values
+            ("yes", False),
+            ("YES", False),
+            ("on", False),
+            ("enabled", False),
+            # Dict semantics
+            ({}, False),
+            ({"api_key": "x"}, False),
+        ],
+    )
+    def test_is_disabled_values(self, value, expected):
+        """Parametrized test for all _is_disabled input values."""
+        assert _is_disabled(value) is expected
 
 
 class TestNormalizeMultiConfigNonDictMulti:

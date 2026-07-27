@@ -7,7 +7,7 @@
 ## Current State
 
 ```
-557 tests | 97.88% coverage | ruff clean | mypy clean | CI gate 95%
+561 tests | 99.54% coverage | ruff clean | mypy clean | CI gate 95%
 8 source modules | 1084 statements | acyclic import graph
 ```
 
@@ -46,7 +46,7 @@
 - CHANGELOG duplicate `0.12.0` headers merged
 - Version aligned to `0.13.0` across `_version.py`, `pyproject.toml`, `plugin.yaml`
 
-### Pass 12 (this session)
+### Pass 12 (previous session)
 - Removed unreachable `isinstance` in `_normalize_tool_schema` (adapters.py) — after `isinstance(schema.get("function"), dict)` passes, the inner re-check was dead; replaced with typed `unwrapped: dict` local to satisfy mypy `no-any-return`
 - Removed dead `--fix` argparse flag and stub auto-fix block from `_cmd_validate` — help text promised "Attempt to automatically fix common issues" but implementation printed "not yet implemented"
 - Removed dead `config`/`memory_cfg` assignments in `_cmd_setup_backend` — loaded config that was never read (`_do_backend_setup` loads its own)
@@ -57,6 +57,16 @@
 - Removed stale `test_validate_with_fix_flag` test and dead `args.fix = False` assignments
 - Added `test_validate_adapter_raises_exception` — covers the exception handler path in `_cmd_validate`
 - Coverage: 97.45% → 97.88% (23 uncovered lines, down from 28)
+
+### Pass 13 (this session)
+- Added `tests/test_cli_pass13.py` (4 tests) covering the 3 testable uncovered lines in cli.py:
+  - `_print_legacy_provider_config` early return when `top_config` is empty or non-dict (line 1022)
+  - `_print_legacy_provider_config` else branch when provider lacks `get_status_config` (lines 1031-1032)
+  - `_cmd_list` with non-dict `memory` config coercing to `{}` (line 1153)
+- cli.py now at 100% coverage
+- Updated AGENT.md key files table with `test_cli_pass13.py`
+- Coverage: 97.88% → 99.54% (5 uncovered lines, down from 23)
+- Tests: 557 → 561
 
 ## What Remains (Next Session)
 
@@ -75,19 +85,15 @@ All noqa directives are legitimate — they suppress rules that ARE enabled in `
 
 **Do NOT run `ruff check --select RUF100`** — the `--select` flag overrides the project's `select` list, making ruff report all suppressions as stale. Use `ruff check src/` (no flags) to verify.
 
-### Remaining Uncovered Lines (23 total, 97.88%)
+### Remaining Uncovered Lines (5 total, 99.54%)
 
 ```
 src/multi_memory/__init__.py:193     — import-time PREFIX validation warning (only fires if an adapter has empty PREFIX)
 src/multi_memory/adapters.py:381-382 — _MnemosyneAdapter: ImportError on plugins.memory (standalone mode)
 src/multi_memory/adapters.py:422-426 — _MnemosyneAdapter: schema normalization warning path
-src/multi_memory/cli.py:200,202,204,206 — multi_command dispatch: setup with/without backend arg
-src/multi_memory/cli.py:1020-1032    — _print_legacy_provider_config: get_status_config path
-src/multi_memory/cli.py:1126         — _print_backend_status: not-available env var display
-src/multi_memory/cli.py:1153         — _cmd_status: legacy provider warning
 ```
 
-Most are interactive/Hermes-dependent paths (`pragma: no cover` functions) or require a real Hermes installation.
+All remaining uncovered lines are in `__init__.py` and `adapters.py` — they require a real Hermes installation or specific import failure paths. cli.py is now at 100% coverage.
 
 ### Scan Methodology for Next Session
 
@@ -133,7 +139,7 @@ discovery.py → config
 cli.py       → _version, config, __init__ (deferred: adapters via create_adapter)
 ```
 
-### Test Files (15 files, 557 tests)
+### Test Files (16 files, 561 tests)
 
 ```
 tests/test_adapters.py           — core adapter + provider + lifecycle tests
@@ -146,6 +152,7 @@ tests/test_cli.py                — CLI subcommand tests
 tests/test_cli_robustness.py     — CLI dispatch, edge cases, guards
 tests/test_cli_validate.py       — create_adapter + _cmd_validate
 tests/test_cli_fifth_pass.py     — --check, --force, --all, --config-only, categorized list
+tests/test_cli_pass13.py         — _print_legacy_provider_config edges, _cmd_list non-dict memory
 tests/test_config.py             — config loading, format precedence
 tests/test_config_robustness.py  — _is_disabled, _normalize_multi_config, edge cases
 tests/test_discovery.py          — backend discovery + installation detection

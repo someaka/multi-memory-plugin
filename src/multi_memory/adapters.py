@@ -134,7 +134,14 @@ class _SubProviderAdapter:
 
     @property
     def name(self) -> str:
-        return cast(str, self._delegate.name)
+        try:
+            return cast(str, self._delegate.name)
+        except AttributeError:
+            logger.warning(
+                "[multi-memory] adapter delegate missing 'name' attribute, "
+                "falling back to CONFIG_KEY"
+            )
+            return self.CONFIG_KEY or self.__class__.__name__
 
     def is_available(self) -> bool:
         return cast(bool, self._delegate.is_available())
@@ -201,12 +208,14 @@ class _SubProviderAdapter:
         *,
         parent_session_id: str = "",
         reset: bool = False,
+        rewound: bool = False,
         **kwargs: Any,
     ) -> None:
         self._delegate.on_session_switch(
             new_session_id,
             parent_session_id=parent_session_id,
             reset=reset,
+            rewound=rewound,
             **kwargs,
         )
 

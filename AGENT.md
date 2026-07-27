@@ -232,6 +232,7 @@ sub.method = lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("fail"))
 | `tests/test_generic_adapter.py` | `_GenericAdapter` + `_try_generic_backend()` tests |
 | `tests/test_cli_validate.py` | `create_adapter()` + `_cmd_validate` tests |
 | `tests/test_cli_fifth_pass.py` | `--check`, `--force`, `--all`, `--config-only` flag tests, categorized list, dispatch routing |
+| `tests/test_cli_pass13.py` | `_print_legacy_provider_config` early return + else branch, `_cmd_list` non-dict memory config |
 
 | `.github/workflows/ci.yml` | CI — Python 3.10/3.11/3.12/3.13/3.14, `astral-sh/ruff-action`, actions v6, pytest + 95% coverage, mypy, hermes-agent pinned to `v2026.7.7.2` |
 

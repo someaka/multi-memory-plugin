@@ -190,7 +190,7 @@ from .validate import NamespaceValidator  # noqa: E402
 _validator = NamespaceValidator(list(_SUB_CLASSES))
 _prefix_warnings = _validator.validate_all()
 if _prefix_warnings:
-    logger.warning(
+    logger.warning(  # pragma: no cover — only fires if an adapter has empty PREFIX
         "[multi-memory] %d adapter(s) have empty PREFIX — tool name collisions possible",
         len(_prefix_warnings),
     )
@@ -291,14 +291,18 @@ class MultiMemoryProvider(MemoryProvider):
         when ``load_memory_provider`` is called during CLI status
         commands, because Hermes resolves the active provider from
         config each time a provider is loaded.
+
+        Thread-safety: ``_loading`` flag is protected by ``_lock``.
         """
-        if self._loading:
-            return
-        self._loading = True
+        with self._lock:
+            if self._loading:
+                return
+            self._loading = True
         try:
             self.__load_config_impl()
         finally:
-            self._loading = False
+            with self._lock:
+                self._loading = False
 
     def __load_config_impl(self) -> None:
         from .config import load_full_config
@@ -331,11 +335,14 @@ class MultiMemoryProvider(MemoryProvider):
                     adapter.name,
                     exc,
                 )
-        self._subs = validated
+        with self._lock:
+            self._subs = validated
+        if not validated:
+            logger.warning("[multi-memory] no backends loaded — provider will be unavailable")
         logger.info(
             "[multi-memory] loaded %d backends: %s",
-            len(self._subs),
-            [s.name for s in self._subs],
+            len(validated),
+            [s.name for s in validated],
         )
 
     # ─── Snapshot helper ───────────────────────────────────────────────────

@@ -968,7 +968,7 @@ class TestSubProviderAdapterDelegation:
         adapter, delegate = self._make_adapter()
         adapter.on_session_switch("new-sid", parent_session_id="old", reset=True)
         delegate.on_session_switch.assert_called_once_with(
-            "new-sid", parent_session_id="old", reset=True
+            "new-sid", parent_session_id="old", reset=True, rewound=False
         )
 
     def test_on_memory_write_delegates(self):
@@ -1229,7 +1229,7 @@ class TestHolographicAdapterLifecycle:
             "new-sid", parent_session_id="old", reset=True
         )  # should not raise
         adapter._delegate.on_session_switch.assert_called_once_with(
-            "new-sid", parent_session_id="old", reset=True
+            "new-sid", parent_session_id="old", reset=True, rewound=False
         )
 
     def test_on_delegation(self, adapter):
